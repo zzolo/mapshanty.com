@@ -4,4 +4,4 @@ The Map Shanty and mapshanty.com lived in 2009 on Medicine Lake in Minneapolis, 
 
 This is an archive of that site.  Screenshot:
 
-[MapShanty.com screenshot](https://raw.github.com/zzolo/mapshanty.com/master/mapshanty-screen.png?raw=true)
+![](https://raw.github.com/zzolo/mapshanty.com/master/mapshanty-screen.png?raw=true)
