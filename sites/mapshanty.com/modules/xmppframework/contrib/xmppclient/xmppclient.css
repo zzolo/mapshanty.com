@@ -1,0 +1,41 @@
+/* $id */
+
+.xmppclient_login > form > div {
+  text-align: center;
+}
+
+.xmppclient_onlineuser {
+  padding-top: 2px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid black;
+}
+
+.xmppclient_onlineuser > div {
+  display: table-cell;
+  padding-right: 2px;
+}
+
+.xmppclient_over {
+  background-color: #dddddd;
+}
+
+.xmppclient_onlineuserinfo {
+  display: none;
+  z-index: 2000;
+  position: absolute;
+  font-weight: bold;
+  background-color: #afeeee;
+  padding: 5px;
+  border: 1px solid black;
+}
+
+.xmppclient_onlineuserinfo_tablediv {
+  display: table-cell;
+  border: 1px solid black;
+  padding: 2px;
+  width: 100px;
+}
+
+.xmppclient_onlineuserinfo_tabledivover {
+  background-color: #add8e6;
+}

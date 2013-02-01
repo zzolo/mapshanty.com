@@ -1,0 +1,6 @@
+; $Id: xmppclient.info,v 1.1 2008/10/02 20:57:52 darrenferguson Exp $
+name = XMPP-CLIENT
+description = Provides an xmpp thin client for Drupal
+package = "XMPP Framework"
+core = 6.x
+project = "xmpp"

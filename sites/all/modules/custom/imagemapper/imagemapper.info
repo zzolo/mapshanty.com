@@ -1,0 +1,8 @@
+; $Id$
+name = Image Mapper
+description = "Create a Views Style Plugin for a GMap that uses an ImageField for markers."
+core = 6.x
+package = Location
+dependencies[] = views
+dependencies[] = gmap
+dependencies[] = imagefield

@@ -1,0 +1,106 @@
+<?php
+// $Id: xmppclient.install,v
+
+/**
+ * Implementation of hook_enable().
+ */
+function xmppclient_enable() {
+  drupal_set_message(t('XMPPClient module successfully installed. Please review the <a href="@settings">configuration settings</a>.', array('@settings' => url('admin/xmpp_framework/client'))));
+}
+
+/**
+ * Implementation of hook_install().
+ */
+function xmppclient_install() {
+  // doing this so this module will always execute its handlers before ldap
+  db_query("UPDATE {system} SET weight = -5 WHERE name = 'xmppclient' AND type = 'module'");
+
+  drupal_install_schema('xmppclient');
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function xmppclient_uninstall() {
+  drupal_uninstall_schema('xmppclient');
+  variable_del('xmppclient_xmlrpc_url');
+  variable_del('xmppclient_xmlrpc_port');
+  variable_del('xmppclient_xmlrpc_query_string');
+  variable_del('xmppclient_xmlrpc_status');
+}
+
+/**
+ * Implementation of hook_schema()
+ */
+function xmppclient_schema() {
+  return array(
+    'xmppclient_user' => array(
+      'description' => t("Stores XMPP Users"),
+      'fields' => array(
+        'uid' => array(
+          'description' => t("Primary key: Users table uid"),
+          'type'        => 'int',
+          'not null'    => TRUE,
+        ),
+        'jid' => array(
+          'description' => t("Users JID for logging into XMPP"),
+          'type'        => 'varchar',
+          'length'      => 255,
+          'not null'    => FALSE,
+        ),
+        'resource' => array(
+          'description' => t("Resource the user will use to connect"),
+          'type'        => 'varchar',
+          'length'      => 128,
+          'not null'    => FALSE,
+        ),
+        'password' => array(
+          'description' => t("XMPP Password"),
+          'type'        => 'varchar',
+          'length'      => 128,
+          'not null'    => FASLE,
+        ),
+        'last_access' => array(
+          'description' => t("Last access of the user"),
+          'type'        => 'int',
+        ),
+        'status' => array(
+          'description' => t("Status of user, i.e. dnd, xa, etc"),
+          'type'        => 'varchar',
+          'length'      => 255,
+          'not null'    => FALSE,
+        ),
+        'message' => array(
+          'description' => t("Message user has left i.e. Out to lunch"),
+          'type'        => 'varchar',
+          'length'      => 1024,
+          'not null'    => FALSE,
+        ),
+      ),
+      'primary key' => array('uid'),
+    ),
+    'xmppclient_user_properties' => array(
+      'description' => t("Table holds any user properties specifically configuraton properties"),
+      'fields' => array(
+        'uid' => array(
+          'description' => t("Primary key: Users table uid"),
+          'type'        => 'int',
+          'not null'    => TRUE,
+        ),
+        'property_id' => array(
+          'description' => t("Name of the property we are storing"),
+          'type'        => 'varchar',
+          'length'      => 255,
+          'not null'    => TRUE,
+        ),
+        'value' => array(
+          'description' => t("Value of the property we are storing"),
+          'type'        => 'varchar',
+          'length'      => 1024,
+          'not null'    => TRUE,
+        ),
+      ),
+      'primary key' => array('uid', 'property_id'),
+    ),
+  );
+}

@@ -1,0 +1,767 @@
+<?php
+// $Id$
+/**
+ * @file
+ * Main module file for the GMap Field Module
+ *
+ * @notes
+ *
+ * @todo
+ */
+ 
+ 
+/**
+ * Implementation of hook_theme().
+ */
+function gmapfield_theme() {
+  return array(
+    'gmapfield_formatter_default' => array(
+      'arguments' => array('element' => NULL),
+    ),
+    'gmapfield_text' => array(
+      'arguments' => array('element' => NULL),
+    ),
+    'gmapfield_marker' => array(
+      'arguments' => array('element' => NULL),
+    ),
+    'gmapfield_markerwindow' => array(
+      'arguments' => array('location' => NULL, 'node' => NULL),
+    ),
+  );
+}
+
+
+/**
+ * Implementation of hook_help().
+ */
+function gmapfield_help($page, $arg) {
+  switch ($page) {
+    case 'admin/help#gmapfield':
+      return t('Create CCK field for GMaps.  Input a GMap Macro and then it will be centered at the node\'s coordinates via Location or other CCK fields.');
+    break;
+  }
+}
+
+
+/**
+ * Implementation of hook_field_info().
+ */
+function gmapfield_field_info() {
+  return array(
+    'gmapfield' => array(
+      'label' => t('GMap Field'),
+      'description' => t('Input a GMap Macro and then it will be centered at the node coordinates via Location or other CCK fields.'),
+      'callbacks' => array(
+        'tables' => CONTENT_CALLBACK_DEFAULT,
+        'arguments' => CONTENT_CALLBACK_DEFAULT,
+        ),
+    ),
+  );
+}
+
+
+/**
+ * Implementation of hook_field_settings().
+ *
+ * Handle the settings for a field.
+ *
+ * @param $op
+ *   The operation to be performed. Possible values:
+ *   - "form": Display the field settings form.
+ *   - "validate": Check the field settings form for errors.
+ *     Note : That operation is currently still supported, but will be
+ *     deprecated at some point.
+ *     It is recommended to use Forms API validation instead.
+ *   - "save": Declare which fields to save back to the database.
+ *   - "database columns": Declare the columns that content.module should create
+ *     and manage on behalf of the field. If the field module wishes to handle
+ *     its own database storage, this should be omitted.
+ *   - "filters": Declare the Views filters available for the field.
+ *     (this is used in CCK's default Views tables definition)
+ *     They always apply to the first column listed in the "database columns"
+ *     array.
+ * @param $field
+ *   The field on which the operation is to be performed.
+ * @return
+ *   This varies depending on the operation.
+ *   - "form": an array of form elements to add to
+ *     the settings page.
+ *   - "validate": no return value. Use form_set_error().
+ *   - "save": an array of names of form elements to
+ *     be saved in the database.
+ *   - "database columns": an array keyed by column name, with arrays of column
+ *     information as values. This column information must include "type", the
+ *     MySQL data type of the column, and may also include a "sortable" parameter
+ *     to indicate to views.module that the column contains ordered information.
+ *     TODO: Details of other information that can be passed to the database layer can
+ *     be found in the API for the Schema API.
+ *   - "filters": an array of 'filters' definitions as expected by views.module
+ *     (see Views Documentation).
+ *     When providing several filters, it is recommended to use the 'name'
+ *     attribute in order to let the user distinguish between them. If no 'name'
+ *     is specified for a filter, the key of the filter will be used instead.
+ */
+function gmapfield_field_settings($op, $field) {
+  switch ($op) {
+    // Case Form
+    case 'form':
+      // Marker fieldset
+      $form['fieldset_markers'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Marker settings'),
+        '#collapsible' => TRUE,
+        '#collapsed' => FALSE,
+      );
+      // Add Markers
+      $form['fieldset_markers']['add_markers'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Add Marker(s)'),
+        '#default_value' => isset($field['add_markers']) ? $field['add_markers'] : TRUE,
+        '#description' => t('If checked, this field will add the markers from the selected datasource and center the map accordingly.'),
+        '#required' => TRUE,
+      );
+      // Choose Markers
+      $form['fieldset_markers']['choose_marker'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Choose Marker Type'),
+        '#default_value' => isset($field['choose_marker']) ? $field['choose_marker'] : TRUE,
+        '#description' => t('If checked and Add Markers is checked, the user can choose which marker to use for the location data that is added to the GMap.'),
+        '#required' => TRUE,
+      );
+      // Default Markers
+      $markers = gmap_get_marker_titles();
+      $form['fieldset_markers']['default_marker'] = array(
+        '#type' => 'select',
+        '#title' => t('Default Marker Type'),
+        '#default_value' => isset($field['default_marker']) ? $field['default_marker'] : 'drupal',
+        '#description' => t('If Add Markers is checked, this will be the marker used on the GMap.'),
+        '#options' => $markers,
+        '#required' => TRUE,
+      );
+
+      // Datasource fieldset
+      $form['fieldset_datasource'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Data Source settings'),
+        '#collapsible' => TRUE,
+        '#collapsed' => FALSE,
+      );
+      // Chose Coordinate Data Source
+      $coordinate_datasource_options = array(
+        'location' => t('Use Location(s)'),
+        'cck_fields' => t('Choose CCK Fields for Lat and Long (*not currently supported*)'),
+      );
+      $form['fieldset_datasource']['coordinate_datasource'] = array(
+        '#type' => 'radios',
+        '#title' => t('Coordinate Data Source'),
+        '#default_value' => ($field['coordinate_datasource']) ? $field['coordinate_datasource'] : 'location',
+        '#options' => $coordinate_datasource_options,
+        '#description' => t('Choose the data source for map center and marker(s).'),
+        '#required' => TRUE,
+      );
+      // Choose Lat Coordinat Field
+      $lat_field = array(
+        'none' => t('None'),
+      );
+      $form['fieldset_datasource']['lat_field'] = array(
+        '#type' => 'select',
+        '#title' => t('Latitude Field'),
+        '#default_value' => ($field['lat_field']) ? $field['lat_field'] : 'none',
+        '#options' => $lat_field,
+        '#description' => t('CCK Field to use for Latitiude date.'),
+      );
+      // Choose Long Coordinat Field
+      $lon_field = array(
+        'none' => t('None'),
+      );
+      $form['fieldset_datasource']['lon_field'] = array(
+        '#type' => 'select',
+        '#title' => t('Longitude Field'),
+        '#default_value' => ($field['lon_field']) ? $field['lon_field'] : 'none',
+        '#options' => $lon_field,
+        '#description' => t('CCK Field to use for Longitude date.'),
+      );
+      
+      return $form;
+
+    // Case Validate
+    case 'validate':
+      break;
+
+    // Case Save
+    case 'save':
+      return array('add_markers', 'choose_marker', 'default_marker', 'coordinate_datasource', 'lat_field', 'lon_field');
+
+    // Case Database Columns
+    case 'database columns':
+      $columns = array(
+        'gmap_macro' => array(
+          'type' => 'text', 
+          'size' => 'medium',
+          'not null' => FALSE, 
+          'sortable' => TRUE,
+        ),
+        'marker_type' => array(
+          'type' => 'varchar', 
+          'length' => 255,
+          'not null' => FALSE, 
+          'sortable' => TRUE,
+        ),
+      );
+      return $columns;
+
+    // Case Views Data
+    case 'views data':
+      module_load_include('inc', 'gmapfield', 'views/gmapfield.views');
+      return link_views_content_field_data($field);
+  }
+}
+
+
+/**
+ * Implementation of hook_content_is_empty().
+ *
+ * This function tells the content module whether or not to consider
+ * the $item to be empty. This is used by the content module
+ * to remove empty, non-required values before saving them.
+ */
+function gmapfield_content_is_empty($item, $field) {
+  if (empty($item['gmap_macro'])) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+
+/**
+ * Implementation of hook_field().
+ *
+ * Define the behavior of a field type.
+ *
+ * @param $op
+ *   What kind of action is being performed. Possible values:
+ *   - "load": The node is about to be loaded from the database. This hook
+ *     should be used to load the field.
+ *   - "validate": The user has just finished editing the node and is
+ *     trying to preview or submit it. This hook can be used to check or
+ *     even modify the node. Errors should be set with form_set_error().
+ *   - "presave": The user has just finished editing the node and the node has
+ *     passed validation. This hook can be used to modify the node.
+ *   - "insert": The node is being created (inserted in the database).
+ *   - "update": The node is being updated.
+ *   - "delete": The node is being deleted.
+ * @param &$node
+ *   The node the action is being performed on. This argument is passed by
+ *   reference for performance only; do not modify it.
+ * @param $field
+ *   The field the action is being performed on.
+ * @param &$node_field
+ *   The contents of the field in this node. Changes to this variable will
+ *   be saved back to the node object.
+ * @return
+ *   This varies depending on the operation.
+ *   - The "load" operation should return an object containing extra values
+ *     to be merged into the node object.
+ *   - The "insert", "update", "delete", "validate", and "presave" operations
+ *     have no return value.
+ *
+ * In most cases, only "validate" operations is relevant ; the rest
+ * have default implementations in content_field() that usually suffice.
+ */
+function gmapfield_field($op, &$node, $field, &$items, $teaser, $page) {
+  switch ($op) {
+    case 'load':
+      foreach ($items as $delta => $item) {
+        _gmapfield_load($items[$delta], $field, $delta, $node);
+      }
+      break;
+
+    case 'validate':
+      foreach($items as $delta => $value) {
+        _gmapfield_validate($items[$delta], $delta, $field, $node);
+      }
+      break;
+
+    case 'presave':
+      foreach($items as $delta => $value) {
+        _gmapfield_presave($items[$delta], $delta, $field, $node);
+      }
+      break;
+
+    case 'sanitize':
+      foreach ($items as $delta => $value) {
+        _gmapfield_sanitize($items[$delta], $delta, $field, $node);
+      }
+      break;
+  }
+}
+
+
+/**
+ * Implementation of hook_field_formatter_info().
+ *
+ * The default behavior of formatters is that they will create
+ * a theme for a single field value.
+ *
+ * Setting 'multiple values' to CONTENT_HANDLE_FIELD will create
+ * a formatter that will receive all the values of a field so you
+ * can, for instance, plot all the values on a map or in a graph.
+ *
+ * The 'view' operation (handled by the Content module) constructs the
+ * $node in a way that you can use drupal_render() to display the
+ * formatted output for an individual field.
+ *
+ * i.e. print drupal_render($node->field_foo);
+ *
+ * The code now supports both single value formatters, which theme an
+ * individual item value as has been done in previous version of CCK,
+ * and multiple value formatters, which theme all values for the field
+ * in a single theme. The multiple value formatters could be used, for
+ * instance, to plot field values on a single map or display them
+ * in a graph. Single value formatters are the default, multiple value
+ * formatters can be designated as such in formatter_info().
+ *
+ * The node array will look like:
+ *
+ *  'Single value' formatter:
+ *   $node->content['field_foo'] = array(
+ *     '#type' => 'content_field',
+ *     '#title' => 'label'
+ *     '#field_name' => 'field_name',
+ *     '#node' => $node,
+ *     'items' =>
+ *       0 => array(
+ *         '#theme' => $theme,
+ *         '#field_name' => 'field_name',
+ *         '#type_name' => $node->type,
+ *         '#formatter' => $formatter_name,
+ *         '#item' => $items[0],
+ *       ),
+ *       1 => array(
+ *         '#theme' => $theme,
+ *         '#field_name' => 'field_name',
+ *         '#type_name' => $node->type,
+ *         '#formatter' => $formatter_name,
+ *         '#item' => $items[1],
+ *       ),
+ *     ),
+ *   );
+ *  'Multiple value' formatter:
+ *   $node->content['field_foo'] = array(
+ *     '#type' => 'content_field',
+ *     '#title' => 'label'
+ *     '#field_name' => 'field_name',
+ *     '#node' => $node,
+ *     'items' => array(
+ *       '#theme' => $theme,
+ *       '#field_name' => 'field_name',
+ *       '#type_name' => $node->type,
+ *       '#formatter' => $formatter_name,
+ *       0 => array(
+ *         '#item' => $items[0],
+ *       ),
+ *       1 => array(
+ *         '#item' => $items[1],
+ *       ),
+ *     ),
+ *   );
+ */
+function gmapfield_field_formatter_info() {
+  return array(
+    'default' => array(
+      'label' => t('Default GMap'),
+      'field types' => array('gmapfield'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+    ),
+  );
+}
+
+
+/**
+ * Theme function for 'default' gmap field.
+ */
+function theme_gmapfield_formatter_default($element) {
+  // Get field data
+  $field_name = $element['#field_name'];
+  $field = content_fields($field_name);
+  $marker_type = ($element['#item']['marker_type']) ? $element['#item']['marker_type'] : 'drupal';
+  // Check for macro
+  if ($macro = $element['#item']['gmap_macro']) {
+    // Get location data
+    $location_data = _gmapfield_get_markers($element['#node'], $marker_type, $field);
+    // Get macro array
+    $macro_array = gmap_parse_macro($macro);
+    // Check for location data
+    if ($location_data) {
+      $macro_array = array_merge($macro_array, $location_data);
+    }
+    // Create a themeable array
+    $gmap_array = array('#settings' => $macro_array);
+    return theme('gmap', $gmap_array);
+  } else {
+    return '';
+  }
+}
+
+
+
+/**
+ * FAPI theme for an individual gmapfield_text element.
+ *
+ * The textfield is already rendered by the textfield
+ * theme and the HTML output lives in $element['#children'].
+ * Override this theme to make custom changes to the output.
+ *
+ * $element['#field_name'] contains the field name
+ * $element['#delta]  is the position of this element in the group
+ */
+function theme_gmapfield_text($element) {  
+  // Field set
+  $fieldset = array(
+    '#type' => 'fieldset',
+    '#title' => $element['#title'],
+    '#description' => $element['#description'],
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+    '#children' => $element['#children'],
+  );
+  //return $element['#children'];
+  return theme('fieldset', $fieldset);
+}
+
+
+/**
+ * Impelemtation of theme hook
+ */
+function theme_gmapfield_markerwindow($location = NULL, $node = NULL) {
+  return theme('location', $location);
+}
+
+
+
+/**
+ * Implementation of hook_widget_info().
+ *
+ * Here we indicate that the content module will handle
+ * the default value and multiple values for these widgets.
+ *
+ * Callbacks can be omitted if default handing is used.
+ * They're included here just so this module can be used
+ * as an example for custom modules that might do things
+ * differently.
+ *
+ * IMPORTANT! - field and widget names will be truncated to 32 characters in
+ * the database and in internal arrays, like content_fields().
+ */
+function gmapfield_widget_info() {
+  return array(
+    'gmapfield_text' => array(
+      'label' => t('GMap Macro Text Area'),
+      'field types' => array('gmapfield'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+      'callbacks' => array(
+        'default value' => CONTENT_CALLBACK_DEFAULT,
+      ),
+    ),
+  );
+}
+
+
+/**
+ * Implementation of FAPI hook_elements().
+ *
+ * Any FAPI callbacks needed for individual widgets can be declared here,
+ * and the element will be passed to those callbacks for processing.
+ *
+ * Drupal will automatically theme the element using a theme with
+ * the same name as the hook_elements key.
+ *
+ * Autocomplete_path is not used by text_widget but other widgets can use it
+ * (see nodereference and userreference).
+ */
+function gmapfield_elements() {
+  return array(
+    'gmapfield_text' =>  array(
+      '#input' => TRUE,
+      '#columns' => array('gmap_macro', 'marker_type'), 
+      '#delta' => 0,
+      '#process' => array('gmapfield_widget_process'),
+    ),
+  );
+}
+
+
+/**
+ * Implementation of hook_widget().
+ *
+ * Attach a single form element to the form. It will be built out and
+ * validated in the callback(s) listed in hook_elements. We build it
+ * out in the callbacks rather than here in hook_widget so it can be
+ * plugged into any module that can provide it with valid
+ * $field information.
+ *
+ * Content module will set the weight, field name and delta values
+ * for each form element. This is a change from earlier CCK versions
+ * where the widget managed its own multiple values.
+ *
+ * If there are multiple values for this field, the content module will
+ * call this function as many times as needed.
+ *
+ * @param $form
+ *   the entire form array, $form['#node'] holds node information
+ * @param $form_state
+ *   the form_state, $form_state['values'][$field['field_name']]
+ *   holds the field's form values.
+ * @param $field
+ *   the field array
+ * @param $items
+ *   array of default values for this field
+ * @param $delta
+ *   the order of this item in the array of subelements (0, 1, 2, etc)
+ *
+ * @return
+ *   the form item for a single element for this field
+ */
+function gmapfield_widget(&$form, &$form_state, $field, $items, $delta = 0) {
+  $element = array();
+  switch ($field['widget']['type']) {
+    case 'gmapfield_text':
+      $element = array(
+        '#type' => $field['widget']['type'],
+        '#default_value' => (($items[$delta]) ? $items[$delta] : $field['gmap_macro_default']),
+        '#title' => $field['widget']['label'],
+        '#weight' => $field['widget']['weight'],
+        '#description' => $field['widget']['description'],
+        '#required' => $field['required'],
+        '#field' => $field,
+      );
+      break;
+    case 'gmapfield_marker':
+      $element = array(
+        '#type' => $field['widget']['type'],
+        '#default_value' => (($items[$delta]) ? $items[$delta] : $field['default_marker']),
+        '#title' => $field['widget']['label'],
+        '#weight' => $field['widget']['weight'],
+        '#description' => $field['widget']['description'],
+        '#required' => $field['required'],
+        '#field' => $field,
+      );
+      break;
+  }
+  return $element;
+}
+
+
+/**
+ * Process an individual element.
+ *
+ * Build the form element. When creating a form using FAPI #process,
+ * note that $element['#value'] is already set.
+ *
+ * The $fields array is in $form['#field_info'][$element['#field_name']].
+ */
+function gmapfield_widget_process($element, $edit, $form_state, $form) {
+  // Get variables
+  $field_name = $element['#field_name'];
+  $field = $form['#field_info'][$field_name];
+  $delta = $element['#delta'];
+  
+  // Macro
+  $description = t('Enter a GMap Macro.');
+  if (module_exists('gmap_macro_builder') && user_access('create macro')) {
+    $macro_url = url('map/macro');
+    $description .= ' ' . t('<a href="!macro_url" title="Build a Macro">Build a Macro</a>', array('!macro_url' => $macro_url));
+  }
+  $macro_value = ($element['#value']['gmap_macro']) ? $element['#value']['gmap_macro'] : '[gmap ]';
+  $element['gmap_macro'] = array(
+    '#type' => 'textarea',
+    '#default_value' => $macro_value,
+    '#title' => t('GMap Macro'),
+    '#description' => $description, 
+    '#required' => $element['#required'],
+    '#field_name' => $element['#field_name'],
+    '#type_name' => $element['#type_name'],
+    '#delta' => $element['#delta'],
+    '#columns' => $element['#columns'],
+  );
+  
+  // Marker
+  // Check if can add markers
+  if ($field['add_markers']) {
+    $markers = gmap_get_marker_titles();
+    // Check if can change marker
+    $disabled = TRUE;
+    $title = t('Choose Marker');
+    $description = t('This will be the marker to be used for the locations of this node.');
+    if ($field['choose_marker']) {
+      $disabled = FALSE;
+      $title = t('Marker');
+    }
+  
+    $marker_value = isset($element['#value']['marker_type']) ? $element['#value']['marker_type'] : $field['default_marker'];
+    $element['marker_type'] = array(
+      '#type' => 'select',
+      '#default_value' => $marker_value,
+      '#options' => $markers,
+      '#disabled' => $disabled,
+      '#title' => $title,
+      '#description' => $description,
+      '#required' => $element['#required'],
+      '#field_name' => $element['#field_name'],
+      '#type_name' => $element['#type_name'],
+      '#delta' => $element['#delta'],
+      '#columns' => $element['#columns'],
+    );
+  }
+  
+  return $element;
+}
+
+
+/*
+ * Function to validate GMap macro strings
+ *
+ * @params $macro
+ *  String to validate
+ * @return
+ *  Boolean whether macro is valid
+ */
+function _gmapfield_validate_macro($macro = '') {
+  if (is_string($macro)) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+
+/*
+ * Function to do field load operations
+ *
+ * @params $item
+ *  Item that is loading
+ * @params $field
+ *  Field data
+ * @params $delta
+ *  Which item is loading
+ * @params $node
+ *  Node object
+ */
+function _gmapfield_load(&$item, $field, $delta = 0, $node = NULL) {
+  // Do nothing
+  return true;
+}
+
+
+/*
+ * Function to do field validate operations
+ *
+ * @params $item
+ *  Item that is loading
+ * @params $delta
+ *  Which item is loading
+ * @params $field
+ *  Field data
+ * @params $node
+ *  Node object
+ */
+function _gmapfield_validate(&$item, $delta, $field, $node) {
+  // Check for valid GMap Macro
+  if (!_gmapfield_validate_macro($item['gmap_macro'])) {
+    form_set_error($field['field_name'] .']['. $delta. '][title', t('Please enter a valid GMap macro.'));
+  }
+  return true;
+}
+
+
+/*
+ * Function to do field load operations
+ *
+ * @params $item
+ *  Item that is loading
+ * @params $delta
+ *  Which item is loading
+ * @params $field
+ *  Field data
+ * @params $node
+ *  Node object
+ */
+function _gmapfield_presave(&$item, $delta, $field, $node) {
+  //Do nothing
+  return true;
+}
+
+
+/*
+ * Function to do field load operations
+ *
+ * @params $item
+ *  Item that is loading
+ * @params $delta
+ *  Which item is loading
+ * @params $field
+ *  Field data
+ * @params $node
+ *  Node object
+ */
+function _gmapfield_sanitize(&$item, $delta, $field, $node) {
+  // Check Plain Macro
+  $item['gmap_macro'] = check_plain($item['gmap_macro']);
+  return true;
+}
+
+
+/*
+ * Function to get markers
+ *
+ * @params $node
+ *  Node object loaded so far
+ * @params $field
+ *  Field data
+ * @return
+ *  Associative array to merge into a gmap array
+ */
+function _gmapfield_get_markers($node, $marker, $field) {
+  $loc_data = array();
+
+  // Check if the CCK field wants markers
+  if (empty($field['add_markers'])) {
+    return $loc_data;
+  }
+  
+  // Check for datasource
+  if ($field['coordinate_datasource'] == 'location') {
+    // Check Markers
+    $available_markers = gmap_get_marker_titles();
+    if (!array_key_exists($marker, $available_markers)) {
+      $marker = 'drupal';
+    }
+  
+    // Check for locations
+    if ($locations = $node->locations) {
+      $count = 0;
+      foreach ($locations as $l) {
+        // Check for lat and long first
+        if ($l['longitude'] != 0 && $l['latitude'] != 0) {
+          // Add markers
+          $loc_data['markers'][] = array(
+            'text' => theme('gmapfield_markerwindow', $l, $node),
+            'longitude' => $l['longitude'],
+            'latitude' => $l['latitude'],
+            'markername' => $marker,
+            'offset' => $count,
+          );
+          // Set center if primary or first location
+          if ($l['is_primary'] || $count == 0) {
+            $loc_data['longitude'] = $l['longitude'];
+            $loc_data['latitude'] = $l['latitude'];
+          }
+          $count += 1;
+        }
+      }
+    }
+  } elseif ($field['coordinate_datasource'] == 'cck_fields') {
+    $loc_data = array();
+  }
+  return $loc_data;
+}

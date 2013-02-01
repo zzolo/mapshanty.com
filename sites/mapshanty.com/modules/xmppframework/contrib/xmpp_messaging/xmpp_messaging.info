@@ -1,0 +1,8 @@
+// $id:
+
+name = XMPP-MESSAGING
+description = Sending Method: XMPP
+package = "Messaging"
+dependencies[] = messaging
+dependencies[] = xmppframework
+core = 6.x

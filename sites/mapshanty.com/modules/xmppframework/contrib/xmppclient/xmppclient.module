@@ -1,0 +1,632 @@
+<?php
+// $Id: xmppclient.module,v 1.1 2008/10/02 20:57:52 darrenferguson Exp $
+
+/**
+ * @file
+ * Module providing an XMPP Client for Drupal
+ */
+
+define('XMPPCLIENT_PATH',                drupal_get_path('module', 'xmppclient'));
+// XWChat client options that can be passed to the client on start up
+define('XMPPCLIENT_HTTPBASE',            variable_get('xmppclient_httpbase', '/http-bind/'));
+define('XMPPCLIENT_AUTHTYPE',            variable_get('xmppclient_authtype', 'nonsasl'));
+define('XMPPCLIENT_MUC_CONFERENCE',      variable_get('xmppclient_muc_conference', 'conference.chat.openband.net'));
+define('XMPPCLIENT_JUD',                 variable_get('xmppclient_jud', 'vjud.chat.openband.net'));
+define('XMPPCLIENT_LAUNCH',              variable_get('xmppclient_launch', false));
+define('XMPPCLIENT_LOCALE',              variable_get('xmppclient_locale', 'en'));
+// XMPPClient provisioning variable so we can provision jids if needed
+define('XMPPCLIENT_PROVISIONING_SERVER', variable_get('xmppclient_provisioning_server', ''));
+define('XMPPCLIENT_PROVISIONING_ON',     variable_get('xmppclient_provisioning_on', false));
+// block refresh options
+define('XMPPCLIENT_REFRESH',             variable_get('xmppclient_refresh', 10000));
+// hashes used to store the password for the user in the system and then allow decryption for use in the client
+define('XMPPCLIENT_HASH_A',              '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklm nopqrstuvwxyz');
+define('XMPPCLIENT_HASH_B',              'fo2gFeBMQ45Vl3sDp1HGTYbz7vWdikU86taqSPE0muZOj9cKr xRLnJXhwyCIAN');
+
+/**
+ * Implementation of hook_help().
+ */
+function xmppclient_help($path, $arg) {
+  $output = '';
+  switch ($path) {
+    case 'admin/modules#name':
+      $output = t('xmppclient');
+      break;
+    case 'admin/modules#description':
+      $output = t('Provides an xmpp thin client for Drupal');
+      break;
+    case 'admin/help#xmppclient':
+      $output = '<p>'. t('The xmppclient module allows you to use an xmpp thin client without downloading any additional sotftware') .'</p>';
+      break;
+  }
+  return $output;
+}
+
+/**
+ * Implementation of hook_init()
+ */
+function xmppclient_init() {
+  global $user;
+
+  drupal_add_css(XMPPCLIENT_PATH .'/xmppclient.css');
+  drupal_add_js(XMPPCLIENT_PATH .'/xmppclient.js');
+  _xmppclient_user_login_settings();
+  // determine where the user has the launch client immediately enabled
+  if (variable_get('xmppclient_launch_now_'. $user->uid, false)) {
+    drupal_add_js("if (Drupal.jsEnabled) { $(document).ready(function() { Drupal.xmppclient.login(); }); }", 'inline');
+    // set to false so it will not contiunally load on every page load
+    variable_set('xmppclient_launch_now_'. $user->uid, false);
+  }
+}
+
+/**
+ * Implementation of hook_perm()
+ */
+function xmppclient_perm() {
+  return array('administer xmpp', 'view online users', 'client login');
+}
+
+/**
+ * Implementation of hook_menu()
+ */
+function xmppclient_menu() {
+  $items['admin/xmppframework/client'] = array(
+    'title'            => 'Client',
+    'description'      => 'Configure the xmpp client module',
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('xmppclient_admin_settings'),
+    'access arguments' => array('administer xmpp'),
+    'file'             => 'xmppclient.admin.inc',
+  );
+  $items['xmppclient/config/update'] = array(
+    'title'            => 'XWChat Thin Client Configuration Updates',
+    'page callback'    => 'xmppclient_config_update',
+    'access arguments' => array('view online users'),
+    'type'             => MENU_CALLBACK,
+  );
+  $items['xmppclient/config'] = array(
+    'title'            => 'XWChat Thin Client Configuration Request',
+    'page callback'    => 'xmppclient_config',
+    'access arguments' => array('view online users'),
+    'type'             => MENU_CALLBACK,
+  );
+  $items['xmppclient/password'] = array(
+    'title'            => 'XWChat Thin Client User Password Request',
+    'page callback'    => 'xmppclient_password',
+    'access arguments'  => array('view online users'),
+    'type'             => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+/**
+ * Implementation of hook_block()
+ */
+function xmppclient_block($op = 'list', $delta = 0, $edit = array()) {
+  switch ($op) {
+    case 'list':
+      $block = array(
+        array('info' => t('XMPPCLIENT: Chat Launch')),
+      );
+      break;
+    case 'view':
+      switch ($delta) {
+        case 0:
+          $block['subject'] = check_plain(t('Launch Chat'));
+          $block['content'] = theme('xmppclient_login');
+          break;
+      }
+      break;
+  }
+  return $block;
+}
+
+/**
+ * Implementation of hook_theme()
+ */
+function xmppclient_theme() {
+  return array(
+    'xmppclient_login' => array(
+      'file' => 'xmppclient.theme.inc'
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_views_api()
+ */
+function xmppclient_views_api() {
+  return array(
+    'api' => 2,
+    'path' => XMPPCLIENT_PATH,
+  );
+}
+
+/**
+ * @param $form_state
+ *      Current state of the form
+ */
+function xmppclient_login_form($form_state) {
+  // build the form button to allow logging into the client
+  $form['xmppclient']['login']['button'] = array(
+    '#type'          => 'button',
+    '#value'         => t('Launch'),
+    '#description'   => t('Launch the XMPP Thin Client'),
+    '#button_type'   => 'button',
+    '#attributes'    => array('onclick' => "return Drupal.xmppclient.login();"),
+  );
+  return $form;
+}
+
+/**
+ * Implementation of hook_user()
+ *
+ * Changed name of account to user so we know what is being performed on
+ */
+function xmppclient_user($op, &$edit, &$user, $category = NULL) {
+  switch ($op) {
+    case 'delete':
+      xmppclient_user_delete($edit, $user);
+      break;
+
+    case 'form':
+      return xmppclient_user_form($edit, $user, $category);
+      break;
+
+    case 'insert':
+      xmppclient_user_insert($edit, $user, $category);
+      break;
+
+    case 'load':
+      xmppclient_user_load($user);
+      break;
+
+    case 'update':
+      xmppclient_user_update($edit, $user, $category);
+      break;
+
+    case 'validate':
+      xmppclient_user_validate($edit, $user);
+      break;
+
+  }
+}
+
+/**
+ * Builds the form elements for use in the user administration screen
+ */
+function xmppclient_user_form($edit, $user, $category = NULL) {
+  $form = array();
+  if ($category == 'account') {
+    $form['xmppclient'] = array(
+      '#type'          => 'fieldset',
+      '#title'         => t('XMPPClient'),
+      '#tree'          => TRUE,
+      '#weight'        => 2,
+    );
+    $form['xmppclient']['jid'] = array(
+      '#type'          => 'textfield',
+      '#title'         => t('JID'),
+      '#default_value' => $user->xmppclient['jid'],
+      '#description'   => t('Enter your full JID (i.e. user@server.com) here'),
+    );
+    // if the administrator is allowing us to launch the client automatically
+    if (XMPPCLIENT_LAUNCH) {
+      $form['xmppclient']['launch'] = array(
+        '#type'          => 'checkbox',
+        '#title'         => t('Disable the launching of the XWChat Client on Login'),
+        '#default_value' => variable_get('xmppclient_launch_'. $user->uid, false),
+        '#description'   => t('If checked the launching of the XWChat client will be disabled for logins'),
+      );
+    }
+  }
+  return $form;
+}
+
+/**
+ * Implementation of form alter for the user_login form
+ */
+function xmppclient_form_user_login_alter(&$form, $form_state) {
+  $form['#submit'][] = 'xmppclient_user_login_block_submit';
+}
+
+/**
+ * Implementation of form alter for the user_login_block form
+ */
+function xmppclient_form_user_login_block_alter(&$form, $form_state) {
+  $form['#submit'][] = 'xmppclient_user_login_block_submit';
+}
+
+/**
+ * Retrieve the user password so we can store it for the xmppclient usage
+ */
+function xmppclient_user_login_block_submit($form, &$form_state) {
+  global $user;
+  $password = __xmppclient_password($form_state['values']['pass']);
+  // determine if we already have an account for the user or not
+  if (!db_result(db_query("SELECT COUNT(*) FROM {xmppclient_user} WHERE uid = %d", $user->uid))) {
+    // if the user is not already in the table create the user then we can preload the object
+    db_query("INSERT INTO {xmppclient_user} (uid, resource, password) VALUES (%d, '%s', '%s')", $user->uid, $user->name, $password);
+  }
+  else {
+    // set the password they utilized since we might have missed a setting or it could have been reset somewhere
+    db_query("UPDATE {xmppclient_user} SET password = '%s' WHERE uid = %d", $password, $user->uid);
+  }
+  // if provisioning is enabled this will provision the xmpp account information for the user
+  _xmppclient_provision_jid($user);
+  // populating the xmppclient array of the user object
+  $user->xmppclient = db_fetch_array(db_query("SELECT * FROM {xmppclient_user} WHERE uid = %d", $user->uid));
+  // if the xmppclient['jid'] is set we can get the server and user name information from it
+  if (isset($user->xmppclient['jid'])) {
+    $user->xmppclient['server'] = __xmppclient_parse_jid($user->xmppclient['jid'], false); // domain needed for xmlrpc requests
+    $user->xmppclient['user_name'] = __xmppclient_parse_jid($user->xmppclient['jid'], true); // user_name needed for xmlrpc requests
+  }
+  // determine if we are going to launch the client on user login or not
+  if (XMPPCLIENT_LAUNCH && !variable_get('xmppclient_launch_'. $user->uid, false)) {
+    variable_set('xmppclient_launch_now_'. $user->uid, true);
+  }
+}
+
+/**
+ * Implementation of hook_footer()
+ */
+function xmppclient_footer($main = 0) {
+  $output = '<form name="xcMUCPostForm" id="xcMUCPostForm" METHOD="POST" action="'. url('node/add/xmppchat') .'">';
+  $output .= '<input type="hidden" name="chat_type" id="chat_type" value="muc" />';
+  $output .= '<input type="hidden" name="title" id="title" value="" />';
+  $output .= '<input type="hidden" name="begin_time" id="begin_time" value="" />';
+  $output .= '<input type="hidden" name="end_time" id="end_time" value="" />';
+  $output .= '<input type="hidden" name="participants" id="participants" value="" />';
+  $output .= '<input type="hidden" name="body" id="body" value="" />';
+  $output .= '</form>';
+  return $output;
+}
+
+/**
+ * Implementation of hook_nodeapi()
+ */
+function xmppclient_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+
+  if ($op == 'prepare' && $node->type == 'xmppchat' && !isset($node->nid)) {
+    // check if the post has any data in it
+    if (count($_POST) > 0) {
+      $node->title = $_POST['title'];
+      $node->body = $_POST['body'];
+      $node->field_begin_time[0]['value'] = strtotime($_POST['begin_time']);
+      $node->field_end_time[0]['value'] = strtotime($_POST['end_time']);
+      $node->field_participants[0]['value'] = $_POST['participants'];
+      $node->field_chat_type[0]['value'] = $_POST['chat_type'];
+    }
+  }
+}
+
+function xmppclient_menu_start_client() {
+  global $user;
+
+  // if no password die since we cannot continue without xmpp password
+  if (!$user->xmppclient['password']) {
+    die();
+  }
+
+  $output = "Drupal.xmppclient.login();";
+  die($output);
+};
+
+/************************************************************************************************************
+ * FUNCTIONS BELOW ARE UTILIZED IN THE hook_menu() FUNCTION
+ ************************************************************************************************************/
+
+/**
+ * Returns the password to the client
+ */
+function xmppclient_password() {
+  global $user;
+  die(__xmppclient_password($user->xmppclient['password'], TRUE));
+}
+
+/**
+ * Retrieves any specific XMPPClient config parameters from the database
+ * returns them to the calling application
+ */
+function xmppclient_config() {
+  global $user;
+  $output = '';
+  $result = db_query("SELECT * FROM {xmppclient_user_properties} WHERE uid = %d", $user->uid);
+  while ($row = db_fetch_object($result)) {
+    $output .= $row->property_id .' = '. $row->value .';';
+  }
+  die($output);
+}
+
+/**
+ * Updates the XMPPClient Configuration if the user makes any adjustments
+ * Returns 0 on success or 1 on failure so the XMPP Thin Client knows
+ */
+function xmppclient_config_update() {
+  global $user;
+
+  // going through the posted data and updating the database with the information
+  foreach ($_POST as $name => $value) {
+    if (trim($value) == "") { continue; };
+
+    db_query("UPDATE {xmppclient_user_properties} SET value = '%s' WHERE uid = %d AND property_id = '%s'", $value, $user->uid, $name);
+    if (!db_affected_rows()) {
+      @db_query("INSERT INTO {xmppclient_user_properties} (uid, property_id, value) VALUES (%d, '%s', '%s')", $user->uid, $name, $value);
+    }
+  }
+  die();
+}
+
+/************************************************************************************************************
+ * FUNCTIONS UTILIZED BY THE hook_user() FUNCTION
+ ************************************************************************************************************/
+
+/**
+ * Load the user information into the user variable
+ */
+function xmppclient_user_load(&$user) {
+  if (!(db_result(db_query("SELECT COUNT(uid) FROM {xmppclient_user} WHERE uid = %d", $user->uid)))) {
+    // if the user is not already in the table create the user then we can preload the object
+    db_query("INSERT INTO {xmppclient_user} (uid, resource) VALUES (%d, '%s')", $user->uid, $user->name);
+  }
+  // populating the xmppclient array of the user object
+  $user->xmppclient = db_fetch_array(db_query("SELECT * FROM {xmppclient_user} WHERE uid = %d", $user->uid));
+  // setting the resource initially if it is not set so we do not have to continually check for it
+  if (!$user->xmppclient['resource']) {
+    db_query("UPDATE {xmppclient_user} SET resource = '%s' WHERE uid = %d", $user->name, $user->uid);
+    $user->xmppclient['resource'] = $user->name;
+  }
+  // checking for the profile module since people like to use that to store information
+  // if there is a user->jid set and the xmppclient['jid'] is not set then we can set it and update the system
+  if (module_exists('profile') && isset($user->jid) && !isset($user->xmppclient['jid'])) {
+    db_query("UPDATE {xmppclient_user} SET jid = '%s' WHERE uid = %d", $user->jid, $user->uid);
+    $user->xmppclient['jid'] = $user->jid;
+  }
+  // if the xmppclient['jid'] is set we can get the server and user name information from it
+  if (isset($user->xmppclient['jid']) && strlen($user->xmppclient['jid'])) {
+    $user->xmppclient['server'] = __xmppclient_parse_jid($user->xmppclient['jid'], false); // domain needed for xmlrpc requests
+    $user->xmppclient['user_name'] = __xmppclient_parse_jid($user->xmppclient['jid'], true); // user_name needed for xmlrpc requests
+  }
+}
+
+/**
+ * Remove the user information from the system, if the account is deleted
+ */
+function xmppclient_user_delete($edit, $user) {
+  // remove the user from the xmpp server
+  if (module_exists('xmppframework') && function_exists('xmppframework_delete_account')) {
+    if (XMPPCLIENT_PROVISIONING_ON && strlen(XMPPCLIENT_PROVISIONING_SERVER) > 0) {
+      $host = XMPPCLIENT_PROVISIONING_SERVER;
+    }
+    else {
+      $host = $user->xmppclient['server'];
+    }
+    // retrieve the password for the user from the account
+    $password = db_result(db_query("SELECT password FROM {xmppclient_user} WHERE uid = %d", $user->uid));
+    xmppframework_delete_account($user->name, $host, __xmppclient_password($password, TRUE));
+  }
+  // removing the user from the xmppclient user table
+  db_query("DELETE FROM {xmppclient_user_properties} WHERE uid = %d", $user->uid);
+  db_query("DELETE FROM {xmppclient_user} WHERE uid = %d", $user->uid);
+}
+
+/**
+ * Add the user information to the system, if the account is created
+ */
+function xmppclient_user_insert($edit, $user, $category = NULL) {
+  if ($category == 'account') {
+    $password = __xmppclient_password($edit['pass']);
+    if (db_result(db_query("SELECT COUNT(uid) FROM {xmppclient_user} WHERE uid = %d", $edit['uid']))) {
+      db_query("UPDATE {xmppclient_user} SET password = '%s', resource = '%s', status = '%s', message = '%s' WHERE uid = %d", $password, $edit['name'], 'offline', 'offline', $edit['uid']);
+    }
+    else {
+      db_query("INSERT INTO {xmppclient_user} (uid, password, resource, status, message) VALUES (%d, '%s', '%s','%s', '%s')", $edit['uid'], $password, $edit['name'], 'offline', 'offline');
+    }
+    _xmppclient_provision_jid($edit);
+  }
+}
+
+/**
+ * Update the user information in the system, if the account is updated
+ */
+function xmppclient_user_update($edit, $user, $category = NULL) {
+  if ($category == 'account' && isset($edit['xmppclient']['jid'])) {
+    // initially set the password to what it currently it in the database table
+    $password = $user->xmppclient['password'];
+    // if a new password is set, we should encode it and then save in the database
+    if (isset($edit['pass']) && strlen($edit['pass'])) {
+      $password = __xmppclient_password($edit['pass']);
+    }
+    // updating the information in the table based off what we received in the user form submission
+    db_query("UPDATE {xmppclient_user} SET jid = '%s', password = '%s' WHERE uid = %d", $edit['xmppclient']['jid'], $password, $user->uid);
+
+    // setting the name here so it will change in the provisioning instead of the original name
+    // since we are calling with the true variable set it will always make sure it updates the information
+    // will only call if the information is actually available to us i.e. there is a name in the edit array
+    if (isset($edit['name']) && strlen($edit['name'])) {
+      $user->name = $edit['name'];
+      _xmppclient_provision_jid($user, TRUE);
+    }
+
+    // checking for the launch automatically portion for the xwchat
+    if (XMPPCLIENT_LAUNCH) {
+      variable_set('xmppclient_launch_'. $user->uid, $edit['xmppclient']['launch']);
+    }
+  }
+}
+
+/**
+ * Validates the form input from the administration screen elements
+ */
+function xmppclient_user_validate($edit, $user) {
+  if (isset($edit['xmppclient']['jid']) && strlen($edit['xmppclient']['jid']) > 0) {
+    if (!(eregi("^[_a-z0-9-]+(\.[_a-z0-9-]+)*@[a-z0-9-]+(\.[a-z0-9-]+)*(\.[a-z]{2,3})$", $edit['xmppclient']['jid']))) {
+      form_set_error('jid', 'Invalid JID was entered, should be in the form name@domain i.e. xmpp@xmpp.org');
+    }
+  }
+}
+
+/************************************************************************************************
+ * PRIVATE FUNCTIONS FOR USE BY THE MODULE
+ ************************************************************************************************/
+/**
+ * Determine the users current locale settings
+ *
+ * @param $user
+ *      User Object
+ *
+ * @return $locale
+ *      String representation of the users locale
+ */
+function __xmppclient_determine_locale($user) {
+
+  // always the first choice which is the users language settings
+  if (isset($user->langauge) && (!is_null($user->language) && strlen($user->language) > 0)) {
+    return $user->language;
+  }
+
+  // if the first choice does not exist then check for the locale module and get the website choices
+  if (module_exists('locale')) {
+    global $locale;
+    return $locale;
+  }
+
+  // if nothing is set then return the xmppclient module locale settings, will always default to english if not set
+  return XMPPCLIENT_LOCALE;
+}
+
+/**
+ * Encrypt and Decrypt password for storage in database
+ *
+ * @param $password
+ *      Password string
+ * @param $decrypt
+ *      Boolean Value (false = encryption, true = decryption)
+ *
+ * @return $password
+ *      Encrypted or Decrypted password string
+ */
+function __xmppclient_password($password, $decrypt = false) {
+  return $decrypt ? strtr($password, XMPPCLIENT_HASH_B, XMPPCLIENT_HASH_A) : strtr($password, XMPPCLIENT_HASH_A, XMPPCLIENT_HASH_B);
+}
+
+/**
+ * Returns UID from fully qualified jid
+ *
+ * @param $fulljid
+ *      Fully qualified jid including resource
+ *
+ * @return $uid
+ *      User ID
+ */
+function __xmppclient_uid_from_fulljid($fulljid) {
+  $jid = (strpos($fulljid, '/')) ? substr($fulljid, 0, strpos($fulljid, '/')) : $fulljid;
+  return db_result(db_query("SELECT uid FROM {xmppclient_user} WHERE jid = '%s'", $jid));
+}
+
+/**
+ * Function returns either the user name or the server for a specific jid given
+ *
+ * @param $jid
+ *      The JID without resource that we will be parsing
+ * @param $user_name
+ *      Boolean if TRUE return the user name portion else return the server portion
+ */
+function __xmppclient_parse_jid($jid, $user_name = false) {
+  return ($user_name) ? substr($jid, 0, strpos($jid, '@')) : substr($jid, strpos($jid, '@') + 1);
+}
+
+/**
+ * Function utilized to provision the jid for the user
+ *
+ * @param $user
+ *      The user object we wish to provision for xmpp
+ * @param $update
+ *      Update the jid even if it was previously set
+ */
+function _xmppclient_provision_jid($user, $update = FALSE) {
+  // casting to object incase we are given an array
+  $user = (object)$user;
+  // doing the pertinent provisioning for the module
+  if (XMPPCLIENT_PROVISIONING_ON && strlen(XMPPCLIENT_PROVISIONING_SERVER) > 0) {
+    $tjid = db_result(db_query("SELECT jid FROM {xmppclient_user} WHERE uid = %d", $user->uid));
+    // checking if the jid is currently set or not, do not wish to overwrite what is there
+    if ((!$tjid || strlen($tjid)) || $update) {
+      $jid = $user->name .'@'. XMPPCLIENT_PROVISIONING_SERVER;
+      db_query("UPDATE {xmppclient_user} SET jid = '%s' WHERE uid = %d", $jid, $user->uid);
+    }
+  }
+}
+
+/**
+ * Function returns to the user the javascript command to start the thin client
+ *
+ * @param $text
+ *      The text that will be displayed for the link
+ * @param $buddy
+ *      The user object for the buddy you wish to start the one on one chat with
+ */
+function __xmppclient_build_start_chat_link($text, $buddy) {
+  // no jid is set for the buddy hence we cannot start a conversation with them
+  if (!$buddy->xmppclient['jid']) {
+    return '';
+  }
+
+  return '<a href="javascript:Drupal.xmppclient.message_chat(\''. $buddy->xmppclient['jid'] .'\');">'. $text .'</a>';
+}
+
+/**
+ * Function produces the link for joining a muc
+ *
+ * @param $text
+ *      The text that will be displayed in the link
+ * @param $group
+ *      The group we are going to join
+ * @param $func
+ *      The name of the javascript function to be called
+ */
+function __xmppclient_build_join_muc_link($text, $group, $func) {
+  global $user;
+
+  if ($user->xmppclient['password']) {
+    return '<a href="javascript:'. $func .'(\''. $group .'\');">'. $text .'</a>';
+  }
+  return '';
+}
+
+/**
+ * Function produces the javascript but not full link for the call to join a muc
+ *
+ * @param $func
+ *      The name of the javascript function that will be called
+ * @param $group
+ *      The group we are going to join
+ */
+function __xmppclient_build_join_muc_js($func, $group) {
+  global $user;
+
+  if ($user->xmppclient['password']) {
+    return $func .'(\''. $group .'\');';
+  }
+  return '';
+}
+
+/**
+ * Function makes sure the correct xmppclient settings are in the js DOM
+ */
+function _xmppclient_user_login_settings() {
+  global $user;
+
+  $jid = split("@", $user->xmppclient['jid']);
+  $settings['xmppclient']['login']['url'] = base_path() . XMPPCLIENT_PATH .'/xwchat/roster.html?';
+  $settings['xmppclient']['login']['username'] = $jid[0];
+  $settings['xmppclient']['login']['resource'] = $user->xmppclient['resource'];
+  $settings['xmppclient']['login']['domain'] = $jid[1];
+  $settings['xmppclient']['login']['srvUrl'] = url('xmppclient');
+  $settings['xmppclient']['login']['locale'] = __xmppclient_determine_locale($user);
+  $settings['xmppclient']['login']['httpbase'] = XMPPCLIENT_HTTPBASE;
+  $settings['xmppclient']['login']['authtype'] = XMPPCLIENT_AUTHTYPE;
+  $settings['xmppclient']['login']['MUC'] = XMPPCLIENT_MUC_CONFERENCE;
+  $settings['xmppclient']['login']['SEARCH'] = XMPPCLIENT_JUD;
+  drupal_add_js($settings, 'setting');
+}

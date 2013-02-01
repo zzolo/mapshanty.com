@@ -1,0 +1,132 @@
+<?php
+/**
+ * @file
+ * XMPP Messsaging. Messaging method plug-in
+ */
+
+/**
+ * Implementation of hook_user()
+ *
+ * Changed name of account to user so we know what is being performed on
+ */
+function xmpp_messaging_user($type, $edit, &$user, $category = NULL) {
+  switch ($type) {
+    case 'form':
+      if ($category == 'account') {
+        $form['xmpp_messaging'] = array(
+          '#type'        => 'fieldset',
+          '#title'       => t('XMPP Messaging settings'),
+          '#weight'      => 5,
+          '#collapsible' => TRUE,
+        );
+        $form['xmpp_messaging']['queue_messages'] = array(
+          '#type'          => 'select',
+          '#title'         => t('Queue xmpp messages if offline'),
+          '#default_value' => variable_get('xmpp_messaging_queue_messages_'. $user->uid, 0),
+          '#options'       => array(0 => t('No'), 1 => t('Yes')),
+          '#description'   => t('If yes, your xmpp messages will be queued until they can be delivered when you are online.'),
+        );
+        return $form;
+      }
+      break;
+
+    case 'update':
+      if ($category == 'account') {
+        variable_set('xmpp_messaging_queue_messages_'. $user->uid, $edit['queue_messages']);
+      }
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_messaging
+ */
+function xmpp_messaging_messaging($op = 'info') {
+  switch($op) {
+    case 'send methods':
+      $info['xmpp'] = array(
+        'name' => t('XMPP'),
+        'send' => 'xmpp_messaging_send',
+        'type' => MESSAGING_TYPE_PUSH,
+        'render' => 'xmpp_messaging_render',
+        'glue' => '',
+        'description' => t('Send XMPP using XMPP Framework.'),
+      );
+      return $info;
+  }
+}
+
+/**
+ * Message Render callback
+ */
+function xmpp_messaging_render($message, $info) {
+  // rendering the message to get any additional pieces being put on
+  $message = messaging_message_render($message, $info);
+
+  // We need to apply filtering first or run through the render function
+  $message['subject'] = xmpp_messaging_render_value($message['subject']);
+  // removing all html but before doing that making sure we replace line br elements with newlines
+  $message['body'] = xmpp_messaging_render_value($message['body']);
+
+  return $message;
+}
+
+/**
+ * Send message via the xmppframework
+ *
+ * @param $destination
+ *      User Object
+ * @param $message
+ *      Message Object
+ * @param $params
+ *      Extra parameters
+ */
+function xmpp_messaging_send($destination, $message, $params = array()) {
+  if ($destination && $destination->xmppclient['jid']) {
+    // check if the user has any online resources if not fall back to email
+    $resources = xmppframework_get_user_resources();
+    if (is_numeric($resources) && $resources) {
+      return xmppframework_send_message($destination->xmppclient['jid'], 'headline', $message['body'], $message['subject']);
+    }
+    // if user has specified that xmpp messages can be queued then we set the queue flag
+    if (variable_get('xmpp_messaging_queue_messages_'. $destination->uid, 0)) {
+      $method = 'xmpp';
+      $queue = 1;
+    }
+    else {
+      // defaulting the user to mail if they did not specify the queue flag
+      $method = 'mail';
+      $queue = 0;
+      // checking if the messaging function exists, can't always verify that the module will be there
+      if (function_exists('messaging_method_default')) {
+        // getting the default sending method for the user account
+        $method = messaging_method_default($destination);
+        // this is to stop an infinite loop on the call since it would continually come back here
+        if ($method == 'xmpp') {
+          $method = 'mail';
+        }
+      }
+    }
+    // calling the messaging framework send user method will either queue using messaging queue or send as a mail
+    if (!(messaging_message_send_user($destination, $message, $method, $queue))) {
+      watchdog('xmpp_messaging', t('Message was not sent to @user due to error', array('@user' => $destination->name)), WATCHDOG_ERROR);
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Renders the message by stripping all html tags from it, but before it does
+ * that it will remove all br elements and replace them with new lines for fomatting
+ *
+ * @param $value
+ *      String value to be rendered
+ */
+function xmpp_messaging_render_value($value) {
+  // stripping the tags and replacing the br elements with new lines
+  if ($value && strlen($value)) {
+    return strip_tags(str_replace(array("<br/>", "<br>", "<br />"), "\n\n", $value));
+  }
+  return NULL;
+}

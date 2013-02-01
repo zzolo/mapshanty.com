@@ -1,0 +1,266 @@
+body.not-fonrt {
+text-align: left;
+}
+
+.help,
+.view-header,
+#mission {
+padding: 3px 10px;
+font-size: 1.5em;
+border: 10px solid #DFE0C3;
+margin-bottom: .7em;
+}
+
+.gmap {
+border: 2px solid #B4B672;
+}
+
+#content .messages {
+border: 2px solid #B4B672;
+margin: .5em;
+padding: .5em;
+}
+
+#content h3 {
+margin-top: 1em;
+}
+
+#widgets .widget p {
+  padding: 0 .8em;
+}
+
+#widgets .widget .more-link {
+  padding-right: .8em;
+}
+
+.view-where-from-view .view-footer p {
+padding: 3px 10px;
+font-size: 1.5em;
+border: 10px solid #7472B6;
+background-color: #C3C2E0;
+}
+.view-where-from-view .view-footer p a {
+font-weight: bold;
+}
+
+blockquote {
+font-style: italic;
+background-color: #EEEEEE;
+width: 100%;
+padding: 1em;
+margin: 0;
+}
+
+.field-field-node-image {
+width: 150px;
+float: right;
+margin-left: .5em;
+margin-bottom: .5em;
+}
+p.postmetadata {
+padding-bottom: 1em;
+}
+p {
+margin: .7em 0;
+}
+ul.links {
+margin: .4em;
+}
+legend {
+font-weight: bold;
+font-size: 1.2em;
+padding: 0 .5em;
+}
+
+#sidebar .widget 
+.view-recent-discussion ul li .views-field-group-nid a {
+font-size: .8em;
+color: #8697A0;
+}
+
+/* group images */
+fieldset.group-images, fieldset.group-image-set, fieldset.group-image-group {
+border: none;
+background-color: #DDDDDD;
+padding-bottom: 0;
+}
+fieldset.group-images legend, fieldset.group-image-set legend, fieldset.group-image-group legend {
+display: none;
+}
+.field-field-image-group .field-item, fieldset.group-image-set .field-item, fieldset.group-image-group .field-item {
+width: 50px;
+float: left;
+margin-right: 10px;
+margin-bottom: 10px;
+height: 50px;
+}
+
+/* mappers view */
+.view-mappers .views-field-title {
+font-size: 2em;
+}
+.view-mappers .views-field-field-node-image-fid {
+width: 150px;
+float: right;
+margin-left: .5em;
+margin-bottom: .5em;
+}
+.view-mappers .views-field-field-user-title-value {
+font-size: 1.3em;
+}
+.view-mappers .views-field-field-user-title-value .views-label-field-user-title-value {
+font-weight: bold;
+}
+.view-mappers .views-label-coordinates {
+font-weight: bold;
+}
+fieldset.group-fav-place {
+border: 10px solid #DFE0C3;
+}
+.view-mappers .field-content {
+min-height: 100px;
+}
+
+div.groups, .meta, p.postmetadata {
+background-color: #DFE0C3;
+padding: .2em .5em;
+margin-bottom: .8em;
+}
+
+h2 {
+font-size: 1.6em;
+margin-top: 1.6em;
+}
+
+h2#page-title {
+margin-top: .5em;
+font-size: 2.5em;
+}
+
+.view-id-og_members_faces table td, .view-id-og_members_block {
+text-align: left;
+}
+
+#content .view-recent-discussion .item-list ul li {
+list-style: none;
+padding: .3em .6em;
+}
+#content .view-recent-discussion .item-list ul li .views-field-group-nid a {
+text-decoration: none;
+font-size: .8em;
+}
+
+#content .view-recent-discussion .item-list ul li.views-row-odd {
+background-color: #DFE0C3;
+}
+
+ul.pager {
+border-top: 3px solid #7472B6;
+padding-top: 1em;
+margin-top: .5em;
+}
+
+ul.pager li a {
+border: 2px solid #7472B6;
+background-color: #C3C2E0;
+padding: .2em .5em;
+text-decoration: none;
+}
+
+.scruffy-map-label {
+width: 200px;
+}
+.scruffy-map-label label {
+font-weight: bold;
+}
+
+
+.view-id-all_images_v2 .views-field-field-image-group-fid .field-content a {
+width: 50px;
+float: left;
+margin: 0 .2em .2em 0;
+}
+.view-id-all_images_v2 {
+border: 5px solid #DFE0C3;
+padding: .4em 0 0 .4em; 
+}
+
+#block-views-all_images_v2-block_1 .view-footer {
+clear: both;
+}
+
+.view-display-id-block_2 .views-field-field-image-group-fid .field-content a {
+width: 50px;
+float: left;
+margin: 0 .2em .2em 0;
+}
+.view-display-id-block_2 {
+border: 5px solid #DFE0C3;
+padding: .4em 0 0 .4em; 
+}
+#block-views-at_shanty-block_2 .view-footer {
+clear: both;
+}
+
+
+.schedule-block-block {
+border: 5px solid #DFE0C3;
+padding: .4em .5em; 
+}
+
+.schedule-block {
+background-color: #C3C2E0;
+margin-bottom: .3em;
+padding: .2em .5em;;
+}
+.schedule-block h3 {
+margin: 0;
+padding: 0;
+line-height: 1em;
+font-size: 1.5em;
+}
+.schedule-block .schedule-date {
+font-weight: bold;
+}
+.schedule-block p {
+margin: 0;
+padding: 0;
+}
+
+.view-id-panos_views {
+border: 5px solid #DFE0C3;
+padding: .4em 5px; 
+}
+
+
+fieldset.group-image-images {
+border: none;
+background-color: #DDDDDD;
+padding-bottom: 0;
+}
+
+
+
+
+.view-id-shanty_map #gmap-auto1map-gmap0 .views-field-title {
+font-size: 1.5em;
+margin-bottom: 10px;
+}
+.view-id-shanty_map #gmap-auto1map-gmap0 .views-field-field-node-image-fid {
+width: 150px;
+float: left;
+margin: 0 10px 10px 0;
+}
+.view-id-shanty_map #gmap-auto1map-gmap0 .views-label-field-shanty-artists-value {
+font-weight: bold;
+}
+
+
+
+.view-larger-shanty-map {
+display: block;
+padding: 3px 10px;
+font-size: 1.5em;
+border: 10px solid #7472B6;
+background-color: #C3C2E0;
+}

@@ -1,0 +1,9 @@
+; $Id: xmpp_vcard.info,v 1.1 2008/10/02 20:57:52 darrenferguson Exp $
+name = XMPP-VCARD
+package = "XMPP Framework"
+description = Provides the ability to synchronize your xmpp server vcard
+core = 6.x
+dependencies[] = xmppframework
+dependencies[] = content_profile
+dependencies[] = user_relationship_field_perms
+project = "xmpp"

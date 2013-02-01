@@ -1,0 +1,7 @@
+; $Id: xmpp_xmlrpc.info,v 1.1 2008/10/02 20:57:52 darrenferguson Exp $
+name = XMPP-XMLRPC
+package = "XMPP Framework"
+description = Provides the xmlrpc url for use by other modules
+core = 6.x
+dependencies[] = xmppframework
+project = "xmpp"

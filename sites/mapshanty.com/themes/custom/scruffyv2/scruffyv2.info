@@ -1,0 +1,22 @@
+; $Id: scruffy.info,v 1.1.2.1 2008/09/24 14:56:36 eaton Exp $
+name = Scruffy Customized
+description = A free WordPress by <a href="FRESH01.co.za">FRESH01.co.za</a>
+
+regions[right] = Sidebar
+regions[above] = Above content
+regions[below] = Below content
+
+features[] = name
+features[] = search
+features[] = favicon
+features[] = primary_links
+features[] = comment_user_picture
+
+stylesheets[all][] = style.css
+stylesheets[all][] = pagenavi-css.css
+stylesheets[all][] = style-custom.css
+
+scripts[] = js/pngfix.js
+
+engine = phptemplate
+core = 6.x

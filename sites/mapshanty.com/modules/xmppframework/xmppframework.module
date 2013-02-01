@@ -1,0 +1,357 @@
+<?php
+// $Id: xmppframework.module,v 1.1 2008/10/02 20:57:51 darrenferguson Exp $
+
+/**
+ * @file
+ * Module providing an XMPPFramework for drupal
+ */
+
+define('XMPPFRAMEWORK_PATH', drupal_get_path('module', 'xmppframework'));
+define('XMPPFRAMEWORK_API',  variable_get('xmppframework_api', ''));
+
+/**
+ * Implementation of hook_help().
+ */
+function xmppframework_help($path, $arg) {
+  $output = '';
+  switch ($path) {
+    case 'admin/modules#name':
+      $output = t('xmppframework');
+      break;
+    case 'admin/modules#description':
+      $output = t('Provides an xmpp framework for Drupal');
+      break;
+    case 'admin/help#xmppframework':
+      $output = '<p>'. t('The xmppframework module allows you to communicate with xmpp servers via specified transports') .'</p>';
+      break;
+  }
+  return $output;
+}
+
+/**
+ * Implementation of hook_perm()
+ */
+function xmppframework_perm() {
+  return array('administer xmpp framework');
+}
+
+/**
+ * Implementation of hook_menu()
+ */
+function xmppframework_menu() {
+  $items['admin/xmppframework'] = array(
+    'title'            => 'XMPP Framework',
+    'access arguments' => array('administer xmpp framework'),
+    'description'      => 'Administer and configure the xmpp framework',
+    'page callback'    => 'system_admin_menu_block_page',
+    'file'             => 'system.admin.inc',
+    'file path'        => drupal_get_path('module', 'system'),
+  );
+  $items['admin/xmppframework/settings'] = array(
+    'title'            => 'Settings',
+    'access arguments' => array('administer xmpp framework'),
+    'description'      => 'XMPP Framework settings',
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('xmppframework_admin_settings'),
+    'file'             => 'xmppframework.admin.inc',
+  );
+  return $items;
+}
+
+/**
+ * Retrieve all available xmpp apis
+ *
+ * @param $api
+ *      The xmpp api we wish to retrieve the information about
+ * @param $property
+ *      The property of the xmpp api we wish to find
+ * @param $refresh
+ *      Determine whether we refresh the info cache or not
+ */
+function xmppframework_apis($api = NULL, $property = NULL, $refresh = FALSE) {
+  static $info;
+  if (!$info || $refresh) {
+    $info = module_invoke_all('xmpp', 'info');
+  }
+  // checks to see if we are looking for specific information or not
+  if ($api && $property) {
+    return $info[$api][$property];
+  } elseif ($api) {
+    return $info[$api];
+  }
+  return $info;
+}
+
+/**
+ * Function will return a boolean depending on if the function is
+ * supported by the underlying transport protocol being initialized
+ *
+ * @param $op
+ *      Operation we wish to perform
+ */
+function xmppframework_underlying_function_exists($op = NULL) {
+  if (!$op) {
+    return FALSE;
+  }
+
+  // determine if the underlying api actually supports the operation
+  $info = xmppframework_apis(XMPPFRAMEWORK_API);
+  if ($info && function_exists($info['operation'])) {
+    $func = call_user_func($info['operation'], $op);
+    if ($func && function_exists($func)) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+/**
+ * Sends a message via the framework
+ *
+ * @param $to
+ *      Jid of person receiving the message
+ * @param $type
+ *      XMPP Type of message
+ * @param $body
+ *      Body text of message
+ * @param $subject
+ *      Subject of the message
+ */
+function xmppframework_send_message($to, $type = 'chat', $body = null, $subject = null) {
+  $info = xmppframework_apis(XMPPFRAMEWORK_API);
+  if ($info && function_exists($info['operation'])) {
+    $func = call_user_func($info['operation'], 'send_message');
+    if ($func && function_exists($func)) {
+      if (!call_user_func($func, $to, $type, $body, $subject)) {
+        watchdog('xmppframework', t('Failed to send message to user %to', array('%to' => $to)), WATCHDOG_ERROR);
+      }
+    }
+  }
+}
+
+/**
+ * Deletes a user via the framework
+ *
+ * @param $name
+ *      User Name
+ * @param $host
+ *      Server
+ * @param $password
+ *      User Password
+ */
+function xmppframework_delete_account($name, $host, $password) {
+  $info = xmppframework_apis(XMPPFRAMEWORK_API);
+  if ($info && function_exists($info['operation'])) {
+    $func = call_user_func($info['operation'], 'delete_account');
+    if ($func && function_exists($func)) {
+      if (!call_user_func($func, $name, $host, $password)) {
+        watchdog('xmppframework', t('Failed to delete %user account from server', array('%user' => $name)), WATCHDOG_ERROR);
+      }
+    }
+  }
+}
+
+/**
+ * @param $name
+ *      The name of the muc being created
+ * @param $service
+ *      The conference server the muc will be created on
+ * @param $server
+ *      The server the muc will be created on
+ * @param $title
+ *      The description name for the room
+ */
+function xmppframework_create_muc($name, $service, $server, $title) {
+  $info = xmppframework_apis(XMPPFRAMEWORK_API);
+  if ($info && function_exists($info['operation'])) {
+    $func = call_user_func($info['operation'], 'create_muc');
+    if ($func && function_exists($func)) {
+      if (!call_user_func($func, $name, $service, $server, $title)) {
+        watchdog('xmppframework', t('Failed to create muc: %name', array('%name' => $name)), WATCHDOG_ERROR);
+      }
+    }
+  }
+}
+
+/**
+ * @param $name
+ *      The name of the muc being configured
+ * @param $service
+ *      The conference server the muc resides on
+ * @param $server
+ *      The server the muc resides on
+ * @param $title
+ *      New title for the muc
+ */
+function xmppframework_configure_muc($name, $service, $server, $title) {
+  $info = xmppframework_apis(XMPPFRAMEWORK_API);
+  if ($info && function_exists($info['operation'])) {
+    $func = call_user_func($info['operation'], 'configure_muc');
+    if ($func && function_exists($func)) {
+      if (!call_user_func($func, $name, $service, $server, $title)) {
+        watchdog('xmppframework', t('Failed to configure muc: %name', array('%name' => $name)), WATCHDOG_ERROR);
+      }
+    }
+  }
+}
+
+/**
+ * @param $name
+ *      The name of the muc being created
+ * @param $service
+ *      The conference server the muc will be created on
+ * @param $server
+ *      The server the muc will be created on
+ */
+function xmppframework_delete_muc($name, $service, $server) {
+  $info = xmppframework_apis(XMPPFRAMEWORK_API);
+  if ($info && function_exists($info['operation'])) {
+    $func = call_user_func($info['operation'], 'delete_muc');
+    if ($func && function_exists($func)) {
+      if (!call_user_func($func, $name, $service, $server)) {
+        watchdog('xmppframework', t('Failed to delete muc: %name', array('%name' => $name)), WATCHDOG_ERROR);
+      }
+    }
+  }
+}
+
+/**
+ * @param $uname
+ *      XMPP User name
+ * @param $userver
+ *      XMPP User server
+ * @param $cname
+ *      Contact name
+ * @param $cserver
+ *      Contact server
+ * @param $nick
+ *      Nickname for contact
+ * @param $group
+ *      Group for contact
+ * @param $subscription
+ *      Subscription i.e. both, to, from, none
+ */
+function xmppframework_add_rosteritem($uname, $userver, $cname, $cserver, $nick, $group, $subscription) {
+  $info = xmppframework_apis(XMPPFRAMEWORK_API);
+  if ($info && function_exists($info['operation'])) {
+    $func = call_user_func($info['operation'], 'add_rosteritem');
+    if ($func && function_exists($func)) {
+      if (!call_user_func($func, $uname, $userver, $cname, $cserver, $nick, $group, $subscription)) {
+        watchdog('xmppframework', t('Failed to add %cname to %uname roster', array('%cname' => $cname, '%uname' => $uname)), WATCHDOG_ERROR);
+      }
+    }
+  }
+}
+
+/**
+ * @param $uname
+ *      XMPP User name
+ * @param $userver
+ *      XMPP User server
+ * @param $cname
+ *      Contact name
+ * @param $cserver
+ *      Contact server
+ */
+function xmppframework_delete_rosteritem($uname, $userver, $cname, $cserver) {
+  $info = xmppframework_apis(XMPPFRAMEWORK_API);
+  if ($info && function_exists($info['operation'])) {
+    $func = call_user_func($info['operation'], 'delete_rosteritem');
+    if ($func && function_exists($func)) {
+      if (!call_user_func($func, $uname, $userver, $cname, $cserver)) {
+        watchdog('xmppframework', t('Failed to delete %cname from %uname roster', array('%cname' => $cname, '%uname' => $uname)), WATCHDOG_ERROR);
+      }
+    }
+  }
+}
+
+/**
+ * Retrieve users vcard
+ *
+ * @param $user
+ *      User we wish to retrieve the vcard for
+ *
+ * @return array with vcard information same structure as the array we send
+ */
+function xmppframework_get_vcard($user = NULL) {
+  if (!$user) {
+    global $user;
+  }
+  $info = xmppframework_apis(XMPPFRAMEWORK_API);
+  if ($info && function_exists($info['operation'])) {
+    $func = call_user_func($info['operation'], 'get_vcard');
+    if ($func && function_exists($func)) {
+      $data = call_user_func($func);
+      // if data is not an array then there was an error when trying to retrieve the users vcard
+      if (!is_array($data)) {
+        watchdog('xmppframework', t('Failed to retrieve %user vcard from server', array('%user' => $user->name)), WATCHDOG_ERROR);
+      }
+    }
+    return $data;
+  }
+  return false;
+}
+
+/**
+ * Sets users vcard in the system
+ *
+ * @param $vcard
+ *      Array containing the vcard
+ *
+ * Below is an example of the array structure being passed when sending vcard
+ * $vcard = array();
+ * $vcard['fn'] = 'Test Example User';
+ * $vcard['n'] = array('middle' => 'Example', 'first' => 'Test', 'Last' => 'User');
+ * $vcard['nickname'] = 'Herbert';
+ * $vcard['bday'] = '02/12/2001';
+ *
+ */
+function xmppframework_set_vcard($vcard = array()) {
+  global $user;
+  $info = xmppframework_apis(XMPPFRAMEWORK_API);
+  if ($info && function_exists($info['operation'])) {
+    $func = call_user_func($info['operation'], 'set_vcard');
+    if ($func && function_exists($func)) {
+      if (!call_user_func($func, $vcard)) {
+        watchdog('xmppframework', t('Failed to set %user vcard', array('%user' => $user->name)), WATCHDOG_ERROR);
+      }
+    }
+  }
+}
+
+/**
+ * Gets users roster
+ *
+ * @param $user
+ *      User object
+ */
+function xmppframework_get_roster($user = NULL) {
+  $info = xmppframework_apis(XMPPFRAMEWORK_API);
+  if ($info && function_exists($info['operation'])) {
+    $func = call_user_func($info['operation'], 'get_roster');
+    if ($func && function_exists($func)) {
+      if (!($roster = call_user_func($func, $user))) {
+        watchdog('xmppframework', t('Failed to retrieve roster'), WATCHDOG_ERROR);
+      }
+    }
+  }
+  return $roster;
+}
+
+/**
+ * Gets the number of resources for a particular user
+ *
+ */
+function xmppframework_get_user_resources() {
+  $info = xmppframework_apis(XMPPFRAMEWORK_API);
+  if ($info && function_exists($info['operation'])) {
+    $func = call_user_func($info['operation'], 'get_user_resources');
+    if ($func && function_exists($func)) {
+      $resources = call_user_func($func, $user);
+      if (!is_numeric($resources)) {
+        watchdog('xmppframework', t('Failed to retrieve the number of user resources'), WATCHDOG_ERROR);
+      }
+    }
+  }
+  return $resources;
+}

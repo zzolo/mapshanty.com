@@ -1,0 +1,82 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+   <meta http-equiv="content-type" content="text/html; charset=utf-8">
+   <title>XWChat Help Files</title>
+   <script type="text/javascript" src="jquery.pack.js"></script>
+   <script type="text/javascript" src="window_manager.js"></script>
+   <script type="text/javascript">
+     var pWin = window.opener || window;
+     document.title = pWin.xcT('XWChat Help Files');
+     // adding the style sheet based off the information we have in the client settings
+     document.write('<link rel="stylesheet" type="text/css" href="' + pWin.XC.xcfontsize + '" />');
+     /**
+      * Setting default action for the screen when a user is on it
+      */
+     JQ(document).keydown(function(e) {
+       var keycode = e.charCode ? e.charCode : e.keyCode ? e.keyCode : 0;
+       if (keycode == 13) {
+         window.close(); // enter key pressed
+         return false;
+       };
+       return true;
+     });
+
+     JQ(window).unload(function(){
+       try { pWin.xcWinClose(pWin.xcDec(self.name)); } catch (e) {}
+     });
+   </script>
+  </head>
+  <body id="xcHelp">
+  <div id="xcChat">
+
+    <div id="xcHeaderWrapper">
+      <div id="xcHeader" class="clearfix">
+        <h1>
+         <script type="text/javascript">
+           document.write(pWin.xcT('XWChat Help'));
+         </script>
+        </h1>
+        <a href="#" onclick="window.close()" class="close right">Close</a>
+      </div>
+    </div>
+
+    <div id="xcWrapper">
+      <div id="xcContent">
+
+        <script type="text/javascript">
+          var str = '<br />' +
+                    '<p>' + pWin.xcT('XMPP Chat Client Help') + '</p>' +
+                    '<ul>' +
+                    '<li>' + pWin.xcT('How to chat') + '</li>' +
+                    '<li>' + pWin.xcT('How to Add Associates') + '</li>' +
+                    '<li>' + pWin.xcT('Group Chat') + '</li>' +
+                    '<li>' + pWin.xcT('How to configure the chat client') + '</li>' +
+                    '<li>' + pWin.xcT('How to use bookmarks') + '</li>' +
+                    '<li>' + pWin.xcT('How to post a chat transcript') + '</li>' +
+                    '<li>' + pWin.xcT('How to update your VCard information') + '</li>' +
+                    '</ul>' +
+                    '<br />' +
+                    '<div align="center">' +
+                    '<form name="close_window">' +
+                    '<input type="button" id="close_button" name="close_button" value="' + pWin.xcT('Close') + '" class="xcButton" onClick="self.close();">' +
+                    '</form>' +
+                    '</div>';
+          document.write(str);
+        </script>
+
+      </div>
+      <div id="msg" class="xcMessage"></div>
+    </div>
+
+    <div id="xcFooterContainer">
+      <div id="xcFooter">
+
+      </div>
+    </div>
+
+  </div>
+
+
+  </body>
+</html>

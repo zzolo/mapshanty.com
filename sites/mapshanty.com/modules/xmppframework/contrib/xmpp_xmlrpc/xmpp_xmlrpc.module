@@ -1,0 +1,353 @@
+<?php
+// $Id: xmpp_xmlrpc.module,v 1.1 2008/10/02 20:57:52 darrenferguson Exp $
+
+/**
+ * @file
+ * Module providing an XMPP XMLRPC URL for Drupal Nodes
+ */
+
+define('XMPP_XMLRPC_PATH',         drupal_get_path('module', 'xmpp_xmlrpc'));
+define('XMPP_XMLRPC_URL',          variable_get('xmpp_xmlrpc_url', '127.0.0.1'));
+define('XMPP_XMLRPC_PORT',         variable_get('xmpp_xmlrpc_port', '80'));
+define('XMPP_XMLRPC_QUERY_STRING', variable_get('xmpp_xmlrpc_query_string', '/'));
+
+/**
+ * Implementation of hook_xmpp()
+ *
+ * @param $op
+ *      The operation that is being requested
+ */
+function xmpp_xmlrpc_xmpp($op = 'info') {
+  switch ($op) {
+    case 'info':
+      $info['xmpp_xmlrpc'] = array(
+        'name'        => t('XMLRPC API'),
+        'operation'   => 'xmpp_xmlrpc_operation',
+        'description' => t('Utilize xmlrpc api to XMPP server'),
+      );
+      return $info;
+  }
+}
+
+/**
+ * Implementation of hook_help().
+ */
+function xmpp_xmlrpc_help($path, $arg) {
+  $output = '';
+  switch ($path) {
+    case 'admin/modules#name':
+      $output = t('xmpp_xmlrpc');
+      break;
+    case 'admin/modules#description':
+      $output = t('Provides the xmlrpc url for use by other modules');
+      break;
+    case 'admin/help#xmpp_xmlrpc':
+      $output = '<p>'. t('The xmpp_xmlrpc module provides an xmlrpc url for use by other modules') .'</p>';
+      break;
+  }
+  return $output;
+}
+
+/**
+ * Implementation of hook_perm()
+ */
+function xmpp_xmlrpc_perm() {
+  return array('administer xmpp xmlrpc');
+}
+
+/**
+ * Implementation of hook_menu()
+ */
+function xmpp_xmlrpc_menu() {
+  $items['admin/xmppframework/xmlrpc'] = array(
+    'title'            => 'XMLRPC Settings',
+    'description'      => 'Configure the xmpp xmlrpc module settings',
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('xmpp_xmlrpc_admin_settings'),
+    'access arguments' => array('administer xmpp xmlrpc'),
+  );
+  return $items;
+}
+
+/**
+ * Function used to display the admin screen for the module
+ */
+function xmpp_xmlrpc_admin_settings() {
+  $form['settings'] = array('#type' => 'fieldset', '#title' => t('XMPP XMLRPC Settings'), '#collapsible' => TRUE, '#collapsed' => FALSE);
+  $form['settings']['xmpp_xmlrpc_url'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('Xmlrpc Url'),
+    '#default_value' => XMPP_XMLRPC_URL,
+    '#size'          => 50,
+    '#maxlength'     => 255,
+    '#description'   => t('Url where all XMLRPC requests will be sent too'),
+  );
+  $form['settings']['xmpp_xmlrpc_port'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('Xmlrpc port'),
+    '#default_value' => XMPP_XMLRPC_PORT,
+    '#size'          => 20,
+    '#maxlength'     => 5,
+    '#description'   => t('Port where all XMLRPC requests will be sent too'),
+  );
+  $form['settings']['xmpp_xmlrpc_query_string'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('Xmlrpc Query String'),
+    '#default_value' => XMPP_XMLRPC_QUERY_STRING,
+    '#size'          => 50,
+    '#maxlength'     => 255,
+    '#description'   => t('Additional path information for the XMLRPC request'),
+  );
+  return system_settings_form($form);
+}
+
+/**
+ * Operation function
+ *
+ * @param $op
+ *      Operation we wish to perform
+ */
+function xmpp_xmlrpc_operation($op) {
+  $funcs = array(
+    'send_message' => 'xmpp_xmlrpc_send_message',
+    'delete_account' => 'xmpp_xmlrpc_delete_account',
+    'create_muc' => 'xmpp_xmlrpc_create_muc',
+    'configure_muc' => 'xmpp_xmlrpc_configure_muc',
+    'delete_muc' => 'xmpp_xmlrpc_delete_muc',
+    'add_rosteritem' => 'xmpp_xmlrpc_add_rosteritem',
+    'delete_rosteritem' => 'xmpp_xmlrpc_delete_rosteritem',
+    'get_vcard' => 'xmpp_xmlrpc_get_vcard',
+    'set_vcard' => 'xmpp_xmlrpc_set_vcard',
+    'get_roster' => 'xmpp_xmlrpc_get_roster',
+    'get_user_resources' => 'xmpp_xmlrpc_get_user_resources',
+  );
+  return $funcs[$op];
+}
+
+/**
+ * Sending a message via XMLRPC interface
+ *
+ * @param $to
+ *      Jid of person receiving the message
+ * @param $type
+ *      XMPP Type of message
+ * @param $body
+ *      Body text of message
+ * @param $subject
+ *      Subject of the message
+ */
+function xmpp_xmlrpc_send_message($to, $type = 'chat', $body = null, $subject = null) {
+  $url = xmpp_xmlrpc_url();
+  $result = xmlrpc($url, 'send_message', array('from' => $to, 'to' => $to, 'subject' => $subject, 'body' => $body));
+  if ($result === FALSE) {
+    watchdog('xmpp_xmlrpc', 'Errno: '. xmlrpc_errno() .' Message: '. xmlrpc_error_msg(), WATCHDOG_ERROR);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Deleting user account via XMLRPC interface
+ *
+ * @param $name
+ *      User Name
+ * @param $host
+ *      Server
+ * @param $password
+ *      User Password
+ */
+function xmpp_xmlrpc_delete_account($name, $host, $password) {
+  $url = xmpp_xmlrpc_url();
+  $result = xmlrpc($url, 'delete_account', array('user' => $user->name, 'host' => $host, 'password' => $password));
+  if ($result === FALSE) {
+    watchdog('xmpp_xmlrpc', 'Errno: '. xmlrpc_errno() .' Message: '. xmlrpc_error_msg(), WATCHDOG_ERROR);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Creating muc via XMLRPC interface
+ *
+ * @param $name
+ *      The name of the muc being created
+ * @param $service
+ *      The conference server the muc will be created on
+ * @param $server
+ *      The server the muc will be created on
+ * @param $title
+ *      The description name for the room
+ */
+function xmpp_xmlrpc_create_muc($name, $service, $server, $title) {
+  $url = xmpp_xmlrpc_url();
+  $result = xmlrpc($url, 'create_muc_room', array('name' => $name, 'service' => $service, 'server' => $server));
+  if ($result === FALSE) {
+    watchdog('xmpp_xmlrpc', 'Errno: '. xmlrpc_errno() .' Message: '. xmlrpc_error_msg(), WATCHDOG_ERROR);
+    return false;
+  }
+  // change the title i.e. the description for the room
+  $result = xmlrpc($url, 'muc_room_change_option', array('name' => $name, 'service' => $service, 'option' => 'title', 'value' => $title));
+  if ($result === FALSE) {
+    watchdog('xmpp_xmlrpc', 'Errno: '. xmlrpc_errno() .' Message: '. xmlrpc_error_msg(), WATCHDOG_ERROR);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Configuring muc via XMLRPC interface
+ *
+ * @param $name
+ *      The name of the muc being created
+ * @param $service
+ *      The conference server the muc will be created on
+ * @param $server
+ *      The server the muc will be created on
+ * @param $title
+ *      The description name for the room
+ */
+function xmpp_xmlrpc_configure_muc($name, $service, $server, $title) {
+  $url = xmpp_xmlrpc_url();
+  // change the title i.e. the description for the room
+  $result = xmlrpc($url, 'muc_room_change_option', array('name' => $name, 'service' => $service, 'option' => 'title', 'value' => $title));
+  if ($result === FALSE) {
+    watchdog('xmpp_xmlrpc', 'Errno: '. xmlrpc_errno() .' Message: '. xmlrpc_error_msg(), WATCHDOG_ERROR);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Deleting muc via XMLRPC interface
+ *
+ * @param $name
+ *      The name of the muc being created
+ * @param $service
+ *      The conference server the muc will be created on
+ * @param $server
+ *      The server the muc will be created on
+ */
+function xmpp_xmlrpc_delete_muc($name, $service, $server) {
+  $url = xmpp_xmlrpc_url();
+  $result = xmlrpc($url, 'delete_muc_room', array('name' => $name, 'service' => $service, 'server' => $server));
+  if ($result === FALSE) {
+    watchdog('xmpp_node_muc', 'Errno: '. xmlrpc_errno() .' Message: '. xmlrpc_error_msg(), WATCHDOG_ERROR);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Adding roster item via XMLRPC interface
+ *
+ * @param $uname
+ *      XMPP User name
+ * @param $userver
+ *      XMPP User server
+ * @param $cname
+ *      Contact name
+ * @param $cserver
+ *      Contact server
+ * @param $nick
+ *      Nickname for contact
+ * @param $group
+ *      Group for contact
+ * @param $subscription
+ *      Subscription i.e. both, to, from, none
+ */
+function xmpp_xmlrpc_add_rosteritem($uname, $userver, $cname, $cserver, $nick, $group, $subscription) {
+  $url = xmpp_xmlrpc_url();
+  $result = xmlrpc($url, 'add_rosteritem', array('localuser' => $uname, 'localserver' => $userver, 'user' => $cname, 'server' => $cserver, 'nick' => $nick, 'group' => $group, 'subs' => $subscription));
+  if ($result === FALSE) {
+    watchdog('xmpp_xmlrpc', 'Errno: '. xmlrpc_errno() .' Message: '. xmlrpc_error_msg(), WATCHDOG_ERROR);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Deleting roster item via XMLRPC interface
+ *
+ * @param $uname
+ *      XMPP User name
+ * @param $userver
+ *      XMPP User server
+ * @param $cname
+ *      Contact name
+ * @param $cserver
+ *      Contact server
+ */
+function xmpp_xmlrpc_delete_rosteritem($uname, $userver, $cname, $cserver) {
+  $url = xmpp_xmlrpc_url();
+  $result = xmlrpc($url, 'delete_rosteritem', array('localuser' => $uname, 'localserver' => $userver, 'user' => $cname, 'server' => $cserver));
+  if ($result === FALSE) {
+    watchdog('xmpp_xmlrpc', 'Errno: '. xmlrpc_errno() .' Message: '. xmlrpc_error_msg(), WATCHDOG_ERROR);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Retrieving a user roster
+ *
+ * @param $user
+ *      User object
+ */
+function xmpp_xmlrpc_get_roster($user = NULL) {
+  if (!$user) {
+    global $user;
+  }
+  $url = xmpp_xmlrpc_url();
+  $result = xmlrpc($url, 'get_roster', array('user' => $user->xmppclient['user_name'], 'server' => $user->xmppclient['server']));
+  if ($result === FALSE) {
+    watchdog('xmpp_xmlrpc', 'Errno: '. xmlrpc_errno() .' Message: '. xmlrpc_error_msg(), WATCHDOG_ERROR);
+    return false;
+  }
+  // parse the information and return as an array
+  $roster = array();
+  if (is_array($result)) {
+    foreach ($result as $key => $values) {
+      $jid = $values['jid'];
+      // means the user was in more than one group
+      if (isset($roster[$jid])) {
+        $roster[$jid]['groups'][] = $values['group'];
+      }
+      else {
+        $roster[$jid] = array('name' => $values['nick'], 'subscription' => 'both');
+        $roster[$jid]['groups'] = array($values['group']);
+      }
+    }
+  }
+  return $roster;
+}
+
+/**
+ * Retrieving the number of online resources for a user
+ *
+ * @param $user
+ *      User object
+ */
+function xmpp_xmlrpc_get_user_resources($user = NULL) {
+  if (!$user) {
+    global $user;
+  }
+
+  $url = xmpp_xmlrpc_url();
+  $result = xmlrpc($url, 'num_resources', array('user' => $user->xmppclient['user_name'], 'host' => $user->xmppclient['server']));
+  if ($result === FALSE) {
+    watchdog('xmpp_xmlrpc', 'Errno: '. xmlrpc_errno() .' Message: '. xmlrpc_error_msg(), WATCHDOG_ERROR);
+    return false;
+  }
+  return $result;
+}
+
+/**
+ * Build xmlrpc url based off the module parameters
+ */
+function xmpp_xmlrpc_url() {
+  $url = 'http://'. XMPP_XMLRPC_URL .':'. XMPP_XMLRPC_PORT .'/';
+  if (strlen(XMPP_XMLRPC_QUERY_STRING) > 0) {
+    $url .= (strpos(XMPP_XMLRPC_QUERY_STRING, '/') == 0) ? substr(XMPP_XMLRPC_QUERY_STRING, 1) : XMPP_XMLRPC_QUERY_STRING;
+  }
+  return $url;
+}

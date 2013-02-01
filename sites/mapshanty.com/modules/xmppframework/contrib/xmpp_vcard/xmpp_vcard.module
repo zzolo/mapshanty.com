@@ -1,0 +1,368 @@
+<?php
+// $Id: xmpp_vcard.module,v 1.1 2008/10/02 20:57:52 darrenferguson Exp $
+
+/**
+ * @file
+ * Module providing an XMPP VCARD synchronization for Drupal
+ */
+
+define('XMPP_VCARD_PATH',          drupal_get_path('module', 'xmpp_vcard'));
+define('XMPP_VCARD_FIELD_MAPPING', variable_get('xmpp_vcard_field_mapping', ''));
+define('XMPP_VCARD_PROFILE_TYPE',  variable_get('xmpp_vcard_profile_type', ''));
+
+/**
+ * Implementation of hook_help().
+ */
+function xmpp_vcard_help($path, $arg) {
+  $output = '';
+  switch ($path) {
+    case 'admin/modules#name':
+      $output = t('xmpp_vcard');
+      break;
+    case 'admin/modules#description':
+      $output = t('Provides the ability to synchronize your xmpp server vcard');
+      break;
+    case 'admin/help#xmpp_vcard':
+      $output = '<p>'. t('The xmpp_vcard module provides the ability to synchronize your xmpp vcard based off your drupal information') .'</p>';
+      break;
+  }
+  return $output;
+}
+
+/**
+ * Implementation of hook_perm()
+ */
+function xmpp_vcard_perm() {
+  return array('administer xmpp vcard', 'synchronize xmpp vcard');
+}
+
+/**
+ * Implementation of hook_menu()
+ */
+function xmpp_vcard_menu() {
+  $items['admin/xmppframework/vcard'] = array(
+    'title'            => 'VCard',
+    'description'      => 'Configure the xmpp vcard module',
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('xmpp_vcard_admin_settings'),
+    'access arguments' => array('administer xmpp vcard'),
+  );
+  $items['user/%user/vcard'] = array(
+    'title'            => 'XMPP VCard',
+    'description'      => 'Display the users vcard as stored on the xmpp server',
+    'page callback'    => 'xmpp_vcard_synchronize',
+    'page arguments'   => array(1),
+    'access callback'  => 'xmpp_vcard_permissions',
+    'access arguments' => array(1),
+    'type'             => MENU_LOCAL_TASK,
+  );
+  $items['xmpp_vcard/synchronize'] = array(
+    'title'            => 'Synchronize Field',
+    'description'      => 'Synchronize a specific field',
+    'page callback'    => 'xmpp_vcard_synchronize_field',
+    'access callback'  => 'xmpp_vcard_permissions',
+    'type'             => MENU_CALLBACK,
+  );
+  $items['xmpp_vcard/synchronize/all'] = array(
+    'title'            => 'Synchronize All',
+    'description'      => 'Synchronize all of the fields',
+    'page callback'    => 'xmpp_vcard_synchronize_all',
+    'access callback'  => 'xmpp_vcard_permissions',
+    'type'             => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+/**
+ * Access permission function to determine if we will display the tab or not
+ *
+ * @param $user
+ *      User object
+ */
+function xmpp_vcard_permissions($user = NULL) {
+  if (!$user) {
+    global $user;
+  }
+
+  if (!user_access('synchronize xmpp vcard') ||
+      !$user->xmppclient['jid'] ||
+      !xmppframework_underlying_function_exists('get_vcard')) {
+    return FALSE;
+  }
+  return TRUE;
+}
+
+/**
+ * Implementation of hook_nodeapi()
+ */
+function xmpp_vcard_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+  global $user;
+  switch ($op) {
+    case 'update':
+      // act only on types designated as profile types and if the xmppframework function for vcard exists
+      if (!is_content_profile($node->type) || !xmppframework_underlying_function_exists('set_vcard')) {
+        return;
+      }
+      // retrieve the users vcard from storage, if nothing is there, then don't do anything
+      $vcard = unserialize(variable_get('xmpp_vcard_user_vcard_'. $user->uid, ''));
+      if (is_array($vcard)) {
+        $tuser = new StdClass();
+        $tuser->uid = 0;
+        foreach ($node as $key => $value) {
+          // if it is not allowed to be seen then we should hide it in the vcard
+          if (!(_user_relationship_field_perms_allow_access(array('node' => $node), $key, $tuser))) {
+            if ($field = _xmpp_vcard_fields(strtoupper($key))) {
+              // clearing the value
+              $vcard = _xmpp_vcard_set_value($vcard, $key, '');
+            }
+          }
+        }
+        // set the vcard on the xmpp server for the user
+        xmppframework_set_vcard($vcard);
+      }
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_theme()
+ */
+function xmpp_vcard_theme() {
+  return array(
+    'xmpp_vcard_information' => array(
+      'arguments' => array('vcard' => NULL, 'profile' => NULL),
+      'file' => 'xmpp_vcard.theme.inc'
+    ),
+  );
+}
+
+/**
+ * Function used to display the admin screen for the module
+ */
+function xmpp_vcard_admin_settings() {
+  $options = array();
+  foreach (content_profile_get_types('names') as $type => $type_name) {
+    $options[$type] = $type_name;
+  }
+
+  $form['settings'] = array('#type' => 'fieldset', '#title' => t('XMPP VCard Settings'), '#collapsible' => TRUE, '#collapsed' => FALSE);
+  $form['settings']['xmpp_vcard_profile_type'] = array(
+    '#type'          => 'select',
+    '#title'         => t('Content Profile Type'),
+    '#default_value' => XMPP_VCARD_PROFILE_TYPE,
+    '#options'       => $options,
+    '#description'   => t('Content profile type that we will utilize in order to perform mappings between the VCard and the users profile in Drupal'),
+
+  );
+  $form['settings']['xmpp_vcard_field_mapping'] = array(
+    '#type'          => 'textarea',
+    '#title'         => t('VCard Field Mappings'),
+    '#default_value' => XMPP_VCARD_FIELD_MAPPING,
+    '#rows'          => 10,
+    '#description'   => t('Field mappings between the xmpp servers vcard and drupal content profile. Format XMPPVCARDFIELD|NAME|CONTENT_PROFILE_FIELD new line denotes new field mapping'),
+  );
+  return system_settings_form($form);
+}
+
+/**
+ * Function retrieves the users vcard and their matching content profile
+ * then it calls the themeing function to display the output to the user
+ *
+ * @param $user
+ *      User object
+ */
+function xmpp_vcard_synchronize($user = NULL) {
+  if (!$user) {
+    global $user;
+  }
+
+  // return error if no profile is loaded since we cannot
+  // do any mappings without the profile node being loaded
+  if (!($profile = _xmpp_vcard_content_profile_load())) {
+    watchdog('xmpp_vcard', t('No content node matches the type specified for mapping between xmpp vcards and content profiles'), WATCHDOG_NOTICE);
+    return '<div style="text-align: center;">'. t('No content node is available, mapping between xmpp vcard and your drupal profile cannot occur') .'</div>';
+  }
+  // calling the xmppframework to retrieve the vcard
+  $vcard = xmppframework_get_vcard($user);
+  variable_set('xmpp_vcard_user_vcard_'. $user->uid, serialize($vcard));
+
+  return theme('xmpp_vcard_information', $vcard, $profile);
+}
+
+/**
+ * Function to synchronize a specific field
+ *
+ * @param $field
+ *      Field to synchronize
+ */
+function xmpp_vcard_synchronize_field($field) {
+  global $user;
+  if (!$field) {
+    drupal_set_message(t('No field was specified to synchronize'), 'error');
+    drupal_goto('user/'. $user->uid .'/vcard');
+  }
+  // retrieve the vcard from the serialized data stored previously
+  $vcard = unserialize(variable_get('xmpp_vcard_user_vcard_'. $user->uid, ''));
+  // retrieve the pertinent information regarding the field
+  $field_mapping = _xmpp_vcard_fields(strtoupper($field));
+  // load the content profile node and verify that it exists
+  if (!($profile = _xmpp_vcard_content_profile_load())) {
+    watchdog('xmpp_vcard', t('No content node matches the type specified for mapping between xmpp vcards and content profiles'), WATCHDOG_NOTICE);
+    drupal_set_message(t('No content node is available, mapping between xmpp vcard and your drupal profile cannot occur'), 'error');
+    drupal_goto('user/'. $user->uid .'/vcard');
+  }
+
+  // setting so we can determine if access is allowed or not
+  $tuser = new StdClass();
+  $tuser->uid = 0;
+  // checking if the user has this set to no show or not if not
+  // then we cannot let them set the value in the system
+  if (!(_user_relationship_field_perms_allow_access(array('node' => $profile), $field, $tuser))) {
+    drupal_set_message(t('Field is marked as do not show to anyone, hence you cannot synchronize your vcard with it'), 'error');
+    drupal_goto('user/'. $user->uid .'/vcard');
+  }
+
+  // retrieve the vcalue for the profile mapping and set it in the vcard
+  if (isset($profile->$field_mapping['mapping']) && is_array($profile->$field_mapping['mapping'])) {
+    $values = $profile->$field_mapping['mapping'];
+    $value = $values[0]['value'];
+  }
+  else {
+    $value = $profile->$field_mapping['mapping'];
+  }
+  $vcard = _xmpp_vcard_set_value($vcard, $field, $value);
+
+  // resetting with the new information in the vcard
+  variable_set('xmpp_vcard_user_vcard_'. $user->uid, serialize($vcard));
+  // set the vcard on the xmpp server for the user
+  xmppframework_set_vcard($vcard);
+  drupal_set_message(t('VCard field @field has been synchronized with your content profile field', array('@field' => $field)));
+  drupal_goto('user/'. $user->uid .'/vcard');
+}
+
+/**
+ * Function to synchronize all of the fields between the vcard and drupal content profile
+ */
+function xmpp_vcard_synchronize_all() {
+  global $user;
+
+  // retrieve the vcard from storage
+  $vcard = unserialize(variable_get('xmpp_vcard_user_vcard_'. $user->uid, ''));
+
+  // retrieve all of the field mappings
+  $field_mapping = _xmpp_vcard_fields();
+  // load the content profile node and verify that it exists
+  if (!($profile = _xmpp_vcard_content_profile_load())) {
+    watchdog('xmpp_vcard', t('No content node matches the type specified for mapping between xmpp vcards and content profiles'), WATCHDOG_NOTICE);
+    drupal_set_message(t('No content node is available, mapping between xmpp vcard and your drupal profile cannot occur'), 'error');
+    drupal_goto('user/'. $user->uid .'/vcard');
+  }
+
+  // setting so we can determine if access is allowed or not
+  $tuser = new StdClass();
+  $tuser->uid = 0;
+
+  // going through the mappings to retrieve the pertinent information
+  foreach ($field_mapping as $name => $field) {
+    if (!(_user_relationship_field_perms_allow_access(array('node' => $profile), $name, $tuser))) {
+      continue;
+    }
+    // retrieve the value for the profile mapping and set it in the vcard
+    if (isset($profile->$field['mapping']) && is_array($profile->$field['mapping'])) {
+      $values = $profile->$field['mapping'];
+      $value = $values[0]['value'];
+    }
+    else {
+      $value = $profile->$field['mapping'];
+    }
+    // incase the name is capitalized which it should not be
+    $vcard = _xmpp_vcard_set_value($vcard, strtolower($name), $value);
+  }
+  // resetting with the new information in the vcard
+  variable_set('xmpp_vcard_user_vcard_'. $user->uid, serialize($vcard));
+  // set the vcard on the xmpp server for the user
+  xmppframework_set_vcard($vcard);
+  drupal_set_message(t('All VCard fields have been synchronized with your content profile fields'));
+  drupal_goto('user/'. $user->uid .'/vcard');
+}
+
+/**
+ * Function holds the field mappings for the vcard
+ *
+ * @param $field
+ *      Field we are looking for in the mapping
+ * @param $refresh
+ *      Refresh the cache if this is set
+ */
+function _xmpp_vcard_fields($field = NULL, $refresh = false) {
+  static $fields = array();
+
+  // if refresh is called or this is the first time calling
+  if ($refresh || !count($fields)) {
+    foreach (explode("\n", XMPP_VCARD_FIELD_MAPPING) as $mapping) {
+      $map = explode("|", trim($mapping));
+      if (strlen(trim($map[0]))) {
+        $fields[trim($map[0])]  = array('name' => trim($map[1]), 'mapping' => trim($map[2]));
+      }
+    }
+  }
+  // determine if it is an actual field we want returned
+  if ($field) {
+    if (isset($fields[$field]) && is_array($fields[$field])) {
+      return $fields[$field];
+    }
+    return NULL;
+  }
+  return $fields;
+}
+
+/**
+ * Load the content profile for the user based off admin specified content profile type
+ *
+ * @return $profile
+ *      Content Profile Node if found or NULL if not found
+ */
+function _xmpp_vcard_content_profile_load() {
+  global $user;
+  $profile = NULL;
+
+  // go through each of the nodes defined as content profiles
+  foreach (content_profile_get_types('names') as $type => $type_name) {
+    if ($type == XMPP_VCARD_PROFILE_TYPE) {
+      $profile = content_profile_load($type, $user->uid);
+      break;
+    }
+  }
+  return $profile;
+}
+
+/**
+ * Helper function that will allow us to set the field correctly
+ *
+ * @param $vcard
+ *      Array holding the vcard information
+ * @param $field
+ *      Field we wish to set in the vcard
+ * @param $value
+ *      Value for the field in the vcard
+ *
+ * @return $vcard
+ *      Array holding vcard or partial vcard information depending
+ *      on where exactly in the recursive call we are standing
+ */
+function _xmpp_vcard_set_value($vcard, $field, $value) {
+  foreach ($vcard as $name => $val) {
+    if (is_array($val)) {
+      // recursively call until we get to a field that is not an array
+      $vcard[$name] = _xmpp_vcard_set_value($val, $field, $value);
+    }
+    else {
+      // check if it is the field we are looking for and set the
+      // value for the field if it is the one we are trying to set
+      if (!strcmp($field, $name)) {
+        $vcard[$name] = $value;
+      }
+    }
+  }
+  return $vcard;
+}

@@ -1,0 +1,7 @@
+; $Id: xmpp_api.info,v 1.1 2008/10/02 20:57:51 darrenferguson Exp $
+name = XMPP-API
+package = "XMPP Framework"
+description = Provides an XMPP API for the Drupal framework
+core = 6.x
+dependencies[] = xmppframework
+project = "xmpp"

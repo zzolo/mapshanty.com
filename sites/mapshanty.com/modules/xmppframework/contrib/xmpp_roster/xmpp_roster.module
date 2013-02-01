@@ -1,0 +1,269 @@
+<?php
+// $Id: xmpp_roster.module,v 1.1 2008/10/02 20:57:52 darrenferguson Exp $
+
+/**
+ * @file
+ * Module providing XMPP ROSTER synchronization for Drupal
+ */
+
+define('XMPP_ROSTER_PATH',        drupal_get_path('module', 'xmpp_roster'));
+define('XMPP_ROSTER_DATE_FORMAT', variable_get('user_profile_date_format', 'small'));
+
+/**
+ * Implementation of hook_help().
+ */
+function xmpp_roster_help($path, $arg) {
+  $output = '';
+  switch ($path) {
+    case 'admin/modules#name':
+      $output = t('xmpp_roster');
+      break;
+    case 'admin/modules#description':
+      $output = t('Provides the ability to synchronize your xmpp server roster with your user relationships');
+      break;
+    case 'admin/help#xmpp_vcard':
+      $output = '<p>'. t('The xmpp_roster module provides the ability to synchronize your xmpp roster based off your user relationships') .'</p>';
+      break;
+  }
+  return $output;
+}
+
+/**
+ * Implementation of hook_perm()
+ */
+function xmpp_roster_perm() {
+  return array('administer xmpp roster', 'synchronize xmpp roster');
+}
+
+/**
+ * Implementation of hook_menu()
+ */
+function xmpp_roster_menu() {
+  $items['admin/xmppframework/roster'] = array(
+    'title'            => 'Roster',
+    'description'      => 'Configure the xmpp roster module',
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('xmpp_roster_admin_settings'),
+    'access arguments' => array('administer xmpp roster'),
+  );
+  $items['user/%user/xmpp_roster'] = array(
+    'title'            => 'XMPP Roster',
+    'description'      => 'Display the xmpp roster against the user relationships',
+    'page callback'    => 'xmpp_roster_synchronize',
+    'page arguments'   => array(1),
+    'access callback'  => 'xmpp_roster_permissions',
+    'access arguments' => array(1),
+    'type'             => MENU_LOCAL_TASK,
+  );
+  $items['user/%user/xmpp_roster/both'] = array(
+    'title'            => 'both',
+    'description'      => 'Show those in both user relationships and the xmpp roster',
+    'page callback'    => 'xmpp_roster_synchronize',
+    'page arguments'   => array(1, 'both'),
+    'access callback'  => 'xmpp_roster_permissions',
+    'access arguments' => array(1),
+    'type'             => MENU_DEFAULT_LOCAL_TASK,
+  );
+  $items['user/%user/xmpp_roster/relationships'] = array(
+    'title'            => 'relationships',
+    'description'      => 'Show those in user relationship associates only',
+    'page callback'    => 'xmpp_roster_synchronize',
+    'page arguments'   => array(1, 'relationships'),
+    'access callback'  => 'xmpp_roster_permissions',
+    'access arguments' => array(1),
+    'type'             => MENU_LOCAL_TASK,
+  );
+  $items['user/%user/xmpp_roster/xmpp'] = array(
+    'title'            => 'xmpp',
+    'description'      => 'Show those in xmpp roster associates only',
+    'page callback'    => 'xmpp_roster_synchronize',
+    'page arguments'   => array(1, 'xmpp'),
+    'access callback'  => 'xmpp_roster_permissions',
+    'access arguments' => array(1),
+    'type'             => MENU_LOCAL_TASK,
+  );
+  $items['xmpp_roster/add'] = array(
+    'title'            => 'Add',
+    'description'      => 'Add the relationship from your xmpp roster',
+    'page callback'    => 'xmpp_roster_add',
+    'page arguments'   => array(1),
+    'access callback'  => 'xmpp_roster_permissions',
+    'access argyments' => array(1),
+    'type'             => MENU_CALLBACK,
+  );
+  $items['xmpp_roster/delete'] = array(
+    'title'            => 'Delete',
+    'description'      => 'Delete the relationship from your xmpp roster',
+    'page callback'    => 'xmpp_roster_delete',
+    'page arguments'   => array(1),
+    'access callback'  => 'xmpp_roster_permissions',
+    'access argyments' => array(1),
+    'type'             => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+/**
+ * Implementation of hook_theme()
+ */
+function xmpp_roster_theme() {
+  return array(
+    'xmpp_roster_associations' => array(
+      'arguments' => array('associations' => NULL, 'view' => NULL),
+      'file' => 'xmpp_roster.theme.inc'
+    ),
+  );
+}
+
+/**
+ * Access permission function to determine if we will display the tab or not
+ *
+ * @param $user
+ *      User object
+ */
+function xmpp_roster_permissions($user = NULL) {
+  if (!$user) {
+    global $user;
+  }
+  if (!user_access('synchronize xmpp roster') ||
+      !$user->xmppclient['jid'] ||
+      !function_exists('user_relationships_load')) {
+    return FALSE;
+  }
+  return TRUE;
+}
+
+/**
+ * Function used to display the admin screen for the module
+ */
+function xmpp_roster_admin_settings() {
+  $form['settings'] = array('#type' => 'fieldset', '#title' => t('XMPP Roster Settings'), '#collapsible' => TRUE, '#collapsed' => FALSE);
+  return system_settings_form($form);
+}
+
+/**
+ * Function will display the current roster synchronizations with the user
+ *
+ * @param $user
+ *      User object
+ */
+function xmpp_roster_synchronize($user, $view = 'both') {
+  $output = '';
+
+  // TODO: decide whether to store in the db and retrieve from there
+  $roster = xmppframework_get_roster($user);
+  // retrieve all of the users relationships
+  $relationships = user_relationships_load(array('user' => $user->uid));
+  $associations = xmpp_roster_process_relationships($relationships, $roster, $user);
+  xmpp_roster_process_roster($roster, $associations, $user);
+  return theme('xmpp_roster_associations', $associations, $view);
+}
+
+/**
+ *
+ * @param $roster
+ *      Array holding the users xmpp roster
+ * @param $relationships
+ *      Array of relationships
+ * @param $user
+ *      User Object
+ */
+function xmpp_roster_process_roster($roster, &$relationships, $user) {
+  if (is_array($roster) && count($roster)) {
+    foreach (array_keys($roster) as $key) {
+      if (!isset($relationships['both'][$key]) && !isset($relationships['relationship'][$key])) {
+        // xmpp roster get uid will return the uid or null if it cannot determine the uid
+        $relationships['xmpp'][$key] = array('uid' => xmpp_roster_get_uid_from_jid($key));
+      }
+    }
+  }
+}
+
+/**
+ * Function processes the relationships and returns an array
+ *
+ * @param $relationships
+ *      Array of relationships
+ * @param $roster
+ *      Array holding the users xmpp roster
+ * @param $user
+ *      User Object
+ */
+function xmpp_roster_process_relationships($relationships, $roster, $user) {
+  $processed = array();
+  // process the user relationships to determine which we have sync and which we do not
+  foreach ($relationships as $key => $object) {
+    $relationship = ($object->requester_id == $user->uid) ? user_load(array('uid' => $object->requestee_id)) : user_load(array('uid' => $object->requester_id));
+    // determine if the relationship has the jid set
+    if (isset($relationship->xmppclient['jid'])) {
+      $jid = $relationship->xmppclient['jid'];
+      // determine if the jid exists in the users roster
+      if (array_key_exists($jid, $roster)) {
+        if (!isset($sync[$jid])) {
+          $processed['both'][$jid] = array('uid' => $relationship->uid, 'name' => $relationship->name, 'created' => $object->created_at, 'type' => array());
+        }
+        $processed['both'][$jid]['type'][] = $object->name;
+      }
+      else {
+        if (!isset($nonsync[$jid])) {
+          $processed['relationship'][$jid] = array('uid' => $relationship->uid, 'name' => $relationship->name, 'created' => $object->created_at, 'type' => array());
+        }
+        $processed['relationship'][$jid]['type'][] = $object->name;
+      }
+    }
+  }
+  return $processed;
+}
+
+/**
+ * Function will add the item to the user's roster
+ *
+ * @param $user
+ *      User Object
+ */
+function xmpp_roster_add() {
+  global $user;
+  $cuser = user_load(array('uid' => arg(2)));
+  if (!$cuser->xmppclient['jid']) {
+    drupal_set_message(t('@name does not have a jabber id so you cannot add them to your roster', array('@name' => $cuser->name)));
+    drupal_goto('user/'. $user->uid .'/xmpp_roster');
+  }
+  // add item to the xmpp roster
+  xmppframework_add_rosteritem($user->name, $user->xmppclient['server'], $cuser->name, $cuser->xmppclient['server'], $cuser->name, t('General'), 'both');
+  drupal_set_message(t('@name, has been added to your xmpp roster', array('@name' => $cuser->name .'@'. $cuser->xmppclient['server'])));
+  drupal_goto('user/'. $user->uid .'/xmpp_roster');
+}
+
+/**
+ * Function will delete the item from the user's roster
+ *
+ * @param $user
+ *      User Object
+ */
+function xmpp_roster_delete() {
+  global $user;
+  if (is_numeric(arg(2))) {
+    $cuser = user_load(array('uid' => arg(2)));
+  }
+  else {
+    $jid = explode('@', arg(2));
+    $cuser = new StdClass();
+    $cuser->name = $jid[0];
+    $cuser->xmppclient['server'] = $jid[1];
+  }
+  // delete item from the xmpp roster
+  xmppframework_delete_rosteritem($user->name, $user->xmppclient['server'], $cuser->name, $cuser->xmppclient['server']);
+  drupal_set_message(t('@name, has been removed from your xmpp roster', array('@name' => $cuser->name .'@'. $cuser->xmppclient['server'])));
+  drupal_goto('user/'. $user->uid .'/xmpp_roster');
+}
+
+/**
+ * @param $jid
+ *      Jabber id string no resource
+ */
+function xmpp_roster_get_uid_from_jid($jid) {
+  if (module_exists('xmppclient') && function_exists('__xmppclient_uid_from_fulljid')) {
+    return __xmppclient_uid_from_fulljid($jid);
+  }
+  return NULL;
+}
