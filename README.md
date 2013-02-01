@@ -8,8 +8,8 @@ This is an archive of that site.
 
 This is a Drupal 6 site.  This has not been fully worked out.  Due to some hard coding paths and switch from site based config to default, things are a bit messy.  Good luck.
 
-* Database dump (coming soon)
-* Do note that there is DB prefix:  ```$db_prefix = 'dr6_';```
+* Load up the database dump: ```mapshanty-db.sql```
+* The default administrator account:  ```admin / admin```
 
 
 ## Screenshot:
